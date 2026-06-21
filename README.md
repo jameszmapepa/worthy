@@ -54,11 +54,26 @@ Letter grade (A/B/C/D/F) is applied to the **gate-adjusted** composite.
 
 Requires Go 1.26+.
 
+From a clone (simplest):
+
 ```bash
-go install github.com/jameszmapepa/repo-health/cmd/repohealth@latest
-# or, from a clone:
-go build -o repohealth ./cmd/repohealth
+git clone https://github.com/jameszmapepa/repo-health
+cd repo-health
+go install ./cmd/repohealth   # installs `repohealth` to $(go env GOPATH)/bin
 ```
+
+Or via the module path with `go install`. The repository is currently
+**private**, so Go's public proxy and checksum database can't read it — tell Go
+to skip them for this namespace first (GitHub auth comes from your existing git
+credentials; `gh auth setup-git` configures that if needed):
+
+```bash
+go env -w GOPRIVATE='github.com/jameszmapepa/*'
+go install github.com/jameszmapepa/repo-health/cmd/repohealth@latest
+```
+
+If the repository is made public, the `GOPRIVATE` step is unnecessary and
+`go install ...@latest` works directly.
 
 ## Usage
 
