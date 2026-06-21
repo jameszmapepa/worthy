@@ -1,0 +1,18 @@
+# Binaries
+/repohealth
+*.exe
+*.out
+
+# Test / coverage artifacts
+*.test
+coverage.out
+coverage.html
+
+# Go workspace
+go.work
+go.work.sum
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/
