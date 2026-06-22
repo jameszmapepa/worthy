@@ -35,10 +35,39 @@ func fixedReport() score.Report {
 		Composite:         68.2,
 		AdjustedComposite: 68.2,
 		Grade:             "C",
+		Verdict:           "In fair health (grade C): strongest on license, weakest on workflow safety; flagged closed to newcomers.",
 		Gates: []score.Gate{
-			{Key: "closed_to_strangers", Severity: score.SeverityWarn, Title: "Closed to newcomers", Detail: "Newcomers' PRs are rarely merged.", CapTo: &cap75},
-			{Key: "vanity_stars", Severity: score.SeverityInfo, Title: "Stars outpace engagement", Detail: "High stars relative to watchers."},
+			{Key: "closed_to_strangers", Severity: score.SeverityWarn, Title: "Closed to newcomers", Detail: "Newcomers' PRs are rarely merged.", HowToClear: "Merge PRs from first-time and non-member contributors.", CapTo: &cap75},
+			{Key: "vanity_stars", Severity: score.SeverityInfo, Title: "Stars outpace engagement", Detail: "High stars relative to watchers.", HowToClear: "Informational: stars are high relative to watchers."},
 		},
+	}
+}
+
+// healthyFixedReport returns a deterministic Report with NO gates, for the
+// Explain view's healthy-repo empty state.
+func healthyFixedReport() score.Report {
+	return score.Report{
+		Categories: []score.CategoryScore{
+			{
+				Key: score.CategoryActivity, Label: "Activity", Value: 92.0, Weight: 0.40,
+				Subs: []score.SubScore{
+					{Key: "commit_frequency", Label: "Commit frequency", Value: 95, Raw: "14 commits/wk", Weight: 0.5},
+					{Key: "commit_recency", Label: "Commit recency", Value: 89, Raw: "5d since last push", Weight: 0.5},
+				},
+			},
+			{
+				Key: score.CategorySecurity, Label: "Security", Value: 80.0, Weight: 0.30,
+				Subs: []score.SubScore{
+					{Key: "ci_present", Label: "CI present", Value: 100, Raw: "CI active", Weight: 0.5},
+					{Key: "workflow_safety", Label: "Workflow safety", Value: 60, Raw: "workflows not inspected", Weight: 0.5},
+				},
+			},
+		},
+		Composite:         88.0,
+		AdjustedComposite: 88.0,
+		Grade:             "A",
+		Verdict:           "In excellent health (grade A): strongest on CI present, weakest on workflow safety.",
+		Gates:             nil,
 	}
 }
 

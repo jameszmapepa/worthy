@@ -56,10 +56,10 @@ func TestTabCyclesViews(t *testing.T) {
 	m.report = fixedReport()
 	m.raw = fixedRaw()
 
-	for want := 1; want <= 3; want++ {
+	for want := 1; want <= 4; want++ {
 		next, _ := m.Update(keyPress("tab"))
 		m = next.(Model)
-		expected := want % 3 // 1,2,0
+		expected := want % 4 // 1,2,3,0
 		if m.view != expected {
 			t.Errorf("after %d tabs view = %d, want %d", want, m.view, expected)
 		}
@@ -72,7 +72,7 @@ func TestNumberKeysSelectViews(t *testing.T) {
 	for _, tc := range []struct {
 		key  string
 		view int
-	}{{"1", 0}, {"2", 1}, {"3", 2}} {
+	}{{"1", 0}, {"2", 1}, {"3", 2}, {"4", 3}} {
 		next, _ := m.Update(keyPress(tc.key))
 		m = next.(Model)
 		if m.view != tc.view {

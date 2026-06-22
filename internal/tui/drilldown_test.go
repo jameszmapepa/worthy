@@ -152,6 +152,7 @@ func TestTabBackToScorecardResetsSelection(t *testing.T) {
 	m = press(m, "j")   // selected=1
 	m = press(m, "tab") // -> radar
 	m = press(m, "tab") // -> gauges
+	m = press(m, "tab") // -> explain
 	m = press(m, "tab") // -> scorecard
 	if m.selected != 0 {
 		t.Errorf("tab back to scorecard: selected=%d, want 0", m.selected)

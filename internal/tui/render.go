@@ -54,6 +54,8 @@ func (m Model) renderActiveView() string {
 		return renderRadar(m.report, m.width)
 	case 2:
 		return renderGauges(m.report, m.raw, m.width)
+	case 3:
+		return renderExplain(m.report, m.width)
 	default:
 		return renderScorecard(m.report, m.width, m.selected, m.expanded)
 	}
@@ -61,7 +63,7 @@ func (m Model) renderActiveView() string {
 
 // renderFooter shows the view tabs and key hints.
 func (m Model) renderFooter() string {
-	names := []string{"1 Scorecard", "2 Radar", "3 Gauges"}
+	names := []string{"1 Scorecard", "2 Radar", "3 Gauges", "4 Explain"}
 	parts := make([]string, len(names))
 	for i, n := range names {
 		if i == m.view && m.state == stateLoaded {
@@ -71,7 +73,7 @@ func (m Model) renderFooter() string {
 		}
 	}
 	tabs := strings.Join(parts, " ")
-	hint := "tab/1-3 switch · r refresh · q quit"
+	hint := "tab/1-4 switch · r refresh · q quit"
 	if m.view == 0 && m.state == stateLoaded {
 		hint = "↑↓ select · enter drill · " + hint
 	}
