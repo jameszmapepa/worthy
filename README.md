@@ -91,8 +91,8 @@ The TUI opens on the scorecard. Switch views and interact with:
 |---|---|
 | `tab` | cycle views |
 | `1` / `2` / `3` / `4` | scorecard / radar / gauges / explain |
-| `↑` `↓` or `j` `k` | move the selected indicator (scorecard) |
-| `enter` / `→` | open the indicator drill-down (scorecard) |
+| `↑` `↓` or `j` `k` | move the selection (scorecard, radar, gauges) |
+| `enter` / `→` | open the drill-down (scorecard, radar, gauges) |
 | `esc` / `←` | close the drill-down (or quit when nothing is open) |
 | `r` | re-fetch and re-score |
 | `q` · `ctrl-c` | quit |
@@ -100,8 +100,10 @@ The TUI opens on the scorecard. Switch views and interact with:
 - **Scorecard** — composite + grade, per-indicator color-coded bars, and the
   triggered gates. Select any indicator and drill in to see its formula, raw
   metric, weight, contribution to its category, and the gates it feeds.
-- **Radar** — all category scores on one ASCII radar.
+- **Radar** — every indicator on one ASCII radar. Select an indicator to light
+  its axis and drill into the same detail (formula, raw, weight, gates).
 - **Gauges** — category gauges plus a sparkline of the 52-week commit trend.
+  Select a category to break it down into its constituent indicators.
 - **Explain** — a plain-language verdict, the strongest and weakest indicators,
   and each triggered gate with how to clear it (or a clean bill of health).
 
@@ -127,7 +129,7 @@ cmd/repohealth/     CLI entry point + argument parsing
 internal/github/    dependency-free GitHub REST client (stdlib only)
 internal/metrics/   collects raw signals from the API (bot-filtering, graceful degradation)
 internal/score/     pure scoring engine: sub-scores, composite, gates (no network)
-internal/tui/       Bubble Tea v2 UI: four views + scorecard drill-down
+internal/tui/       Bubble Tea v2 UI: four views + drill-down on scorecard, radar, and gauges
 docs/SPEC.md        the design contract (metrics, formulas, weights, endpoints)
 ```
 

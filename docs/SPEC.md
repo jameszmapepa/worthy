@@ -173,10 +173,13 @@ Three views, switch with `tab` (cycle) or `1`/`2`/`3`; `q`/`ctrl+c` quits;
 - **View 1 Scorecard:** gate-adjusted composite + letter grade + repo identity;
   per-indicator horizontal bars grouped by category, green (>=70)/amber
   (40-69)/red (<40), each with label, raw metric, bar. Gates listed with glyphs.
-- **View 2 Radar:** hand-rolled ASCII radar over category (and sub-score) values.
+- **View 2 Radar:** hand-rolled ASCII radar over sub-score values. Indicators
+  are selectable (`j`/`k`/arrows): the selected axis is lit and an inline detail
+  panel (the same formula/raw/weight/gates as the scorecard) opens on `enter`.
 - **View 3 Gauges + Sparklines:** `bubbles/v2/progress` bars (static, via
   `ViewAs`) for the 3 categories + composite; ntcharts `sparkline` of
-  `CommitsLast52Weeks` (commit trend).
+  `CommitsLast52Weeks` (commit trend). Category gauges are selectable; `enter`
+  breaks the selected category down into its constituent indicators.
 
 Responsive to width; `lipgloss` styling; header shows effective rate-limit mode.
 
