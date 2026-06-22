@@ -107,6 +107,29 @@ baseline (enrichment adds explanation, not new scoring); `SPEC.md` reflects the
 new fields.
 
 Out of scope (deferred per design): `--json`/`--plain`, pagination, caching,
-new scoring metrics/gates, gate-inspector interactivity. Open follow-ons:
-drill-down for the radar/gauge views (split-pane/modal — V1 is scorecard-only);
-push branch + open PR into `develop`.
+new scoring metrics/gates, gate-inspector interactivity.
+
+Branch pushed and **PR #1 opened into `develop`** (feat: interactive score
+enrichment + collector refactor) — verified green at submit (`make check`:
+fmt-check + vet + race tests, all 5 packages). PR bundles 8 commits (includes
+the spec doc `d14c7a1`, since `origin/develop` was one behind local `develop`).
+
+## Radar & Gauge drill-down (complete)
+
+Design: `~/.claude/plans/glittery-wondering-sunrise.md`. Shipped on branch
+`feat/radar-gauge-drilldown` (off `refactor/interactive-enrichment`, since it
+depends on the scorecard drill-down + `renderDetail` not yet in `develop`).
+
+Extends the scorecard drill-down to the radar (view 2) and gauge (view 3) views,
+inline-below detail (no modal), reusing the root `Model` selection state across
+all three selectable views. Radar selects an indicator (lit axis + the existing
+`renderDetail`); gauges select a category (breaks it into its indicators). No
+scoring/gate/grade changes — pure TUI.
+
+Acceptance: `make check` green (fmt-check + vet + race, all 5 packages); tui
+coverage 95.5%; scores numerically unchanged (diff confined to `internal/tui` +
+tests + docs). Dev-QA: tester VERIFIED, senior-engineer APPROVE, go-engineer
+WARNING (stale comments + 2 missing edge tests — all addressed before commit).
+
+Open follow-on: none for drill-down. (Earlier deferrals still open: `--json`/
+`--plain`, pagination, caching, gate-inspector interactivity.)
