@@ -1,5 +1,6 @@
 # Binaries
 /repohealth
+/bin/
 *.exe
 *.out
 
