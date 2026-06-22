@@ -17,20 +17,21 @@ const gaugeLabelWidth = 12
 // renderGauges renders View 3 as a two-panel dashboard: category + composite
 // gauges on the left, and the 52-week commit sparkline plus headline stats on
 // the right, joined horizontally.
-func renderGauges(r score.Report, raw score.RawMetrics, width int) string {
+func renderGauges(r score.Report, raw score.RawMetrics, width, selected int, expanded bool) string {
 	grade := lipgloss.NewStyle().Foreground(barColor(r.AdjustedComposite)).Bold(true).
 		Render(fmt.Sprintf("  %s  ", r.Grade))
 	head := titleStyle.Render("Overall grade ") + grade +
 		mutedStyle.Render(fmt.Sprintf("  %.1f / 100", r.AdjustedComposite))
 
-	// Left panel: gauges.
+	// Left panel: gauges. selected indexes a category; the composite gauge is
+	// never selectable.
 	gaugeWidth := clampWidth(width/2-gaugeLabelWidth-10, 12, 40)
 	var gb strings.Builder
-	for _, cat := range r.Categories {
-		gb.WriteString(renderGauge(cat.Label, cat.Value, gaugeWidth))
+	for ci, cat := range r.Categories {
+		gb.WriteString(renderGauge(cat.Label, cat.Value, gaugeWidth, ci == selected))
 		gb.WriteString("\n")
 	}
-	gb.WriteString(renderGauge("Composite", r.AdjustedComposite, gaugeWidth))
+	gb.WriteString(renderGauge("Composite", r.AdjustedComposite, gaugeWidth, false))
 	gaugePanel := titledPanel("Category gauges", strings.TrimRight(gb.String(), "\n"), colorBorder)
 
 	// Right panel: sparkline + headline stats.
@@ -41,7 +42,12 @@ func renderGauges(r score.Report, raw score.RawMetrics, width int) string {
 	trendPanel := titledPanel("Activity", trend, colorBorder)
 
 	dashboard := lipgloss.JoinHorizontal(lipgloss.Top, gaugePanel, "  ", trendPanel)
-	return head + "\n\n" + dashboard
+	out := head + "\n\n" + dashboard
+
+	if expanded && selected >= 0 && selected < len(r.Categories) {
+		out += "\n\n" + renderGaugeDetail(r.Categories[selected], width)
+	}
+	return out
 }
 
 // headlineStats renders a few at-a-glance repository numbers for the right
@@ -68,11 +74,33 @@ func headlineStats(raw score.RawMetrics) string {
 // renderGauge renders one static progress bar for a 0..100 value. The bar uses
 // the value's band color (green/amber/red) and is rendered with ViewAs so it is
 // a fixed snapshot rather than an animation.
-func renderGauge(label string, value float64, barWidth int) string {
+func renderGauge(label string, value float64, barWidth int, selected bool) string {
 	c := barColor(value)
 	prog := progress.New(progress.WithColors(c, c), progress.WithWidth(barWidth))
-	label = fmt.Sprintf("%-*s", gaugeLabelWidth, truncate(label, gaugeLabelWidth))
-	return fmt.Sprintf("%s %s %5.1f", label, prog.ViewAs(value/100), value)
+	name := fmt.Sprintf("%-*s", gaugeLabelWidth, truncate(label, gaugeLabelWidth))
+	marker := "  "
+	if selected {
+		marker = selectedMarkerStyle.Render("▸ ")
+		name = selectedLabelStyle.Render(name)
+	}
+	return fmt.Sprintf("%s%s %s %5.1f", marker, name, prog.ViewAs(value/100), value)
+}
+
+// renderGaugeDetail renders the inline drill-down panel for a selected category
+// gauge: its constituent indicators as labeled bars, tracing the category score
+// back to the sub-scores behind it. Mirrors the scorecard's detail placement.
+func renderGaugeDetail(cat score.CategoryScore, width int) string {
+	barWidth := clampWidth(width/2-28, 8, 24)
+	lines := []string{titleStyle.Render(cat.Label + " indicators")}
+	for _, s := range cat.Subs {
+		name := labelStyle.Render(fmt.Sprintf("%-22s", truncate(s.Label, 22)))
+		bar := renderBar(s.Value, barWidth)
+		val := lipgloss.NewStyle().Foreground(barColor(s.Value)).
+			Render(fmt.Sprintf("%5.1f", s.Value))
+		raw := mutedStyle.Render(truncate(s.Raw, 28))
+		lines = append(lines, fmt.Sprintf("%s %s %s  %s", name, bar, val, raw))
+	}
+	return detailStyle.Render(strings.Join(lines, "\n"))
 }
 
 // renderSparkline renders the commit-count series as an ntcharts sparkline.

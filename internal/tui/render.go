@@ -51,9 +51,9 @@ func (m Model) renderError() string {
 func (m Model) renderActiveView() string {
 	switch m.view {
 	case 1:
-		return renderRadar(m.report, m.width)
+		return renderRadar(m.report, m.width, m.selected, m.expanded)
 	case 2:
-		return renderGauges(m.report, m.raw, m.width)
+		return renderGauges(m.report, m.raw, m.width, m.selected, m.expanded)
 	case 3:
 		return renderExplain(m.report, m.width)
 	default:
@@ -74,7 +74,7 @@ func (m Model) renderFooter() string {
 	}
 	tabs := strings.Join(parts, " ")
 	hint := "tab/1-4 switch · r refresh · q quit"
-	if m.view == 0 && m.state == stateLoaded {
+	if m.canSelect() {
 		hint = "↑↓ select · enter drill · " + hint
 	}
 	keys := mutedStyle.Render(hint)

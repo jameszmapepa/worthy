@@ -46,8 +46,8 @@ type Model struct {
 
 	state    state
 	view     int  // active view index 0..viewCount-1
-	selected int  // selected indicator index on the scorecard (flattened)
-	expanded bool // whether the selected indicator's detail is expanded
+	selected int  // selected item index; meaning is view-dependent (flattened indicator on views 0/1, category on view 2)
+	expanded bool // whether the selected item's detail panel is expanded
 	width    int
 	spinner  spinner.Model
 
@@ -132,7 +132,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 // handleKey processes key presses: quit, view switching, re-fetch, and (on the
-// scorecard) indicator selection + drill-down.
+// selectable views) item selection + drill-down.
 func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "q", "ctrl+c":
@@ -146,20 +146,23 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m, tea.Quit
 	case "tab":
 		m.view = (m.view + 1) % viewCount
-		m.syncScorecardSelection()
+		m.resetSelection()
 		return m, nil
 	case "1":
 		m.view = 0
-		m.syncScorecardSelection()
+		m.resetSelection()
 		return m, nil
 	case "2":
 		m.view = 1
+		m.resetSelection()
 		return m, nil
 	case "3":
 		m.view = 2
+		m.resetSelection()
 		return m, nil
 	case "4":
 		m.view = 3
+		m.resetSelection()
 		return m, nil
 	case "r":
 		m.state = stateLoading
@@ -189,11 +192,25 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// canSelect reports whether indicator selection keys are active: only on the
-// loaded scorecard view with at least one indicator. They are inert while
-// loading, on error, and on the radar/gauge views.
+// canSelect reports whether selection keys are active: on the loaded scorecard,
+// radar, and gauge views, each with at least one selectable item. They are inert
+// while loading, on error, and on the explain view.
 func (m Model) canSelect() bool {
-	return m.state == stateLoaded && m.view == 0 && m.indicatorCount() > 0
+	return m.state == stateLoaded && m.currentSelectableCount() > 0
+}
+
+// currentSelectableCount is the number of selectable items in the active view.
+// The scorecard and radar select individual indicators (the flattened sub-score
+// list); the gauge view selects whole categories. Other views select nothing.
+func (m Model) currentSelectableCount() int {
+	switch m.view {
+	case 0, 1:
+		return m.indicatorCount()
+	case 2:
+		return len(m.report.Categories)
+	default:
+		return 0
+	}
 }
 
 // indicatorCount is the total number of sub-scores across all categories.
@@ -205,9 +222,10 @@ func (m Model) indicatorCount() int {
 	return n
 }
 
-// moveSelection shifts the selected indicator by delta, clamped to range.
+// moveSelection shifts the selected item by delta, clamped to the active view's
+// selectable range.
 func (m *Model) moveSelection(delta int) {
-	n := m.indicatorCount()
+	n := m.currentSelectableCount()
 	if n == 0 {
 		return
 	}
@@ -220,13 +238,12 @@ func (m *Model) moveSelection(delta int) {
 	}
 }
 
-// syncScorecardSelection resets selection state whenever the scorecard becomes
-// the active view, so re-entering it always starts at the top, collapsed.
-func (m *Model) syncScorecardSelection() {
-	if m.view == 0 {
-		m.selected = 0
-		m.expanded = false
-	}
+// resetSelection clears selection state on every view switch, so entering any
+// view always starts at the top, collapsed. selected indexes a different domain
+// per view (indicators vs categories), so it must not persist across switches.
+func (m *Model) resetSelection() {
+	m.selected = 0
+	m.expanded = false
 }
 
 // View renders the current state.
