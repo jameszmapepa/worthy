@@ -37,7 +37,7 @@ func project(value float64, index, n int, cx, cy, radius float64) (x, y float64)
 // renderRadar renders View 2 as a two-panel dashboard: the braille radar in a
 // bordered panel on the left, and a per-category indicator list on the right,
 // joined horizontally so the previously empty space is used.
-func renderRadar(r score.Report, width int) string {
+func renderRadar(r score.Report, width, selected int, expanded bool) string {
 	subs := flattenSubs(r)
 
 	title := titleStyle.Render(fmt.Sprintf("Health radar — %d indicators", len(subs)))
@@ -48,28 +48,44 @@ func renderRadar(r score.Report, width int) string {
 		return head + "\n\n" + mutedStyle.Render("(no indicators to plot)")
 	}
 
-	plot := plotRadar(subs)
+	plot := plotRadar(subs, selected)
 	radarPanel := titledPanel("Radar", plot, colorBorder)
 
-	listInner := radarIndicatorList(r) + "\n\n" + radarLegend()
+	listInner := radarIndicatorList(r, selected) + "\n\n" + radarLegend()
 	listPanel := titledPanel("Indicators", listInner, colorBorder)
 
 	dashboard := lipgloss.JoinHorizontal(lipgloss.Top, radarPanel, "  ", listPanel)
-	return head + "\n\n" + dashboard
+	out := head + "\n\n" + dashboard
+
+	if expanded {
+		if cat, sub, ok := indicatorAt(r, selected); ok {
+			out += "\n\n" + renderDetail(sub, cat, width)
+		}
+	}
+	return out
 }
 
 // radarIndicatorList renders the sub-scores grouped by category, each line a
-// colored dot + name + gradient-colored value, for the right-hand panel.
-func radarIndicatorList(r score.Report) string {
+// colored dot + name + gradient-colored value, for the right-hand panel. The
+// indicator at the flattened index selected is marked; pass -1 for none.
+func radarIndicatorList(r score.Report, selected int) string {
 	var b strings.Builder
+	idx := 0
 	for ci, c := range r.Categories {
 		dot := lipgloss.NewStyle().Foreground(categoryColor(c.Key)).Render("●")
 		b.WriteString(fmt.Sprintf("%s %s\n", dot, titleStyle.Render(c.Label)))
 		for _, s := range c.Subs {
-			name := labelStyle.Render(fmt.Sprintf("  %-20s", truncate(s.Label, 20)))
+			label := truncate(s.Label, 20)
+			marker := "  "
+			name := labelStyle.Render(fmt.Sprintf("%-20s", label))
+			if idx == selected {
+				marker = selectedMarkerStyle.Render("▸ ")
+				name = selectedLabelStyle.Render(fmt.Sprintf("%-20s", label))
+			}
 			val := lipgloss.NewStyle().Foreground(gradientColor(s.Value)).
 				Render(fmt.Sprintf("%5.1f", s.Value))
-			b.WriteString(name + " " + val + "\n")
+			b.WriteString(marker + name + " " + val + "\n")
+			idx++
 		}
 		if ci < len(r.Categories)-1 {
 			b.WriteString("\n")
@@ -97,8 +113,30 @@ func flattenSubs(r score.Report) []indicator {
 	return out
 }
 
+// indicatorAt resolves a flattened indicator index to its sub-score and the
+// category it belongs to, in the same display order as flattenSubs and the
+// scorecard. ok is false when idx is out of range. Reused by the radar
+// drill-down to surface the same detail panel as the scorecard.
+func indicatorAt(r score.Report, idx int) (score.CategoryScore, score.SubScore, bool) {
+	if idx < 0 {
+		return score.CategoryScore{}, score.SubScore{}, false
+	}
+	i := 0
+	for _, c := range r.Categories {
+		for _, s := range c.Subs {
+			if i == idx {
+				return c, s, true
+			}
+			i++
+		}
+	}
+	return score.CategoryScore{}, score.SubScore{}, false
+}
+
 // plotRadar draws the radar onto a braille canvas and returns it as a string.
-func plotRadar(subs []indicator) string {
+// The axis at the flattened index selected is lit bright to tie the plot to the
+// indicator list; pass -1 for no selection.
+func plotRadar(subs []indicator, selected int) string {
 	cv := newBrailleCanvas(radarCols, radarRows)
 	cx := float64(cv.pxW) / 2
 	cy := float64(cv.pxH) / 2
@@ -113,10 +151,14 @@ func plotRadar(subs []indicator) string {
 		drawRing(cv, cx, cy, radius*float64(ring)/float64(radarRingsNum), grid)
 	}
 
-	// Faint spokes to each axis tip.
+	// Faint spokes to each axis tip; the selected axis lit bright.
 	for i := range subs {
 		tx, ty := project(100, i, n, cx, cy, radius)
-		cv.line(int(cx), int(cy), int(tx), int(ty), grid)
+		col := grid
+		if i == selected {
+			col = colorFg
+		}
+		cv.line(int(cx), int(cy), int(tx), int(ty), col)
 	}
 
 	// Bright score polygon: connect consecutive points, closed.
@@ -130,9 +172,13 @@ func plotRadar(subs []indicator) string {
 		bpt := points[(i+1)%n]
 		cv.line(int(a[0]), int(a[1]), int(bpt[0]), int(bpt[1]), colorAccent)
 	}
-	// Emphasize each vertex in its category color.
+	// Emphasize each vertex in its category color; the selected one bright.
 	for i, ind := range subs {
-		cv.set(int(points[i][0]), int(points[i][1]), ind.color)
+		col := ind.color
+		if i == selected {
+			col = colorFg
+		}
+		cv.set(int(points[i][0]), int(points[i][1]), col)
 	}
 
 	return cv.render()
