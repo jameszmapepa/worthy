@@ -25,8 +25,9 @@ const (
 	stateErrored              // fetch failed
 )
 
-// viewCount is the number of switchable views (scorecard, radar, gauges).
-const viewCount = 3
+// viewCount is the number of switchable views (scorecard, radar, gauges,
+// explain).
+const viewCount = 4
 
 // resultMsg carries the outcome of the async collect+evaluate command.
 type resultMsg struct {
@@ -156,6 +157,9 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case "3":
 		m.view = 2
+		return m, nil
+	case "4":
+		m.view = 3
 		return m, nil
 	case "r":
 		m.state = stateLoading
