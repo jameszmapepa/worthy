@@ -36,15 +36,6 @@ func TestScorecardGateGlyphs(t *testing.T) {
 	}
 }
 
-func TestRadarViewContent(t *testing.T) {
-	out := renderRadar(fixedReport(), 80, -1, false)
-	for _, w := range []string{"Activity", "Community", "Security"} {
-		if !strings.Contains(out, w) {
-			t.Errorf("radar missing axis label %q in:\n%s", w, out)
-		}
-	}
-}
-
 func TestGaugesViewContent(t *testing.T) {
 	out := renderGauges(fixedReport(), fixedRaw(), 80, -1, false)
 	for _, w := range []string{"Activity", "Community", "Security", "Composite", "52-week commit trend"} {

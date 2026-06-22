@@ -26,7 +26,6 @@ CHAOSS, OpenSSF Scorecard, and empirical OSS-survival literature.
     ntcharts: `sparkline.New(w,h)` → `.PushAll([]float64)` → `.Draw()`/`.DrawBraille()`
     → `.View()`; `barchart.New(w,h)` → `.Push(barchart.BarData{Label, Values:
     []barchart.BarValue{{Name, Value, Style}}})` → `.Draw()` → `.View()`.
-  - Radar is hand-rolled with lipgloss (no chart lib has one).
 - **Immutability, small files (<400 lines), errors handled explicitly, no
   panics in library code, table-driven tests, 80%+ coverage.**
 - **Go 1.26**, idiomatic: typed errors (`errors.Is/As`), `context.Context` first
@@ -173,9 +172,11 @@ Three views, switch with `tab` (cycle) or `1`/`2`/`3`; `q`/`ctrl+c` quits;
 - **View 1 Scorecard:** gate-adjusted composite + letter grade + repo identity;
   per-indicator horizontal bars grouped by category, green (>=70)/amber
   (40-69)/red (<40), each with label, raw metric, bar. Gates listed with glyphs.
-- **View 2 Radar:** hand-rolled ASCII radar over sub-score values. Indicators
-  are selectable (`j`/`k`/arrows): the selected axis is lit and an inline detail
-  panel (the same formula/raw/weight/gates as the scorecard) opens on `enter`.
+- **View 2 Questions:** every indicator grouped under the two contributor
+  questions — "Will it last?" (Activity + Security) and "Will my PR land?"
+  (Community) — as best-to-worst horizontal bars under a per-question verdict.
+  Indicators are selectable (`j`/`k`/arrows); an inline detail panel (the same
+  formula/raw/weight/gates as the scorecard) opens on `enter`.
 - **View 3 Gauges + Sparklines:** `bubbles/v2/progress` bars (static, via
   `ViewAs`) for the 3 categories + composite; ntcharts `sparkline` of
   `CommitsLast52Weeks` (commit trend). Category gauges are selectable; `enter`

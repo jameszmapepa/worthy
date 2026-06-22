@@ -80,8 +80,8 @@ func TestDrillInertWhileLoading(t *testing.T) {
 }
 
 // TestDrillInertOnExplainView confirms selection keys are inert on the Explain
-// view (view 4), the one loaded view without drill-down. The scorecard, radar,
-// and gauge views are all selectable; explain is not.
+// view (view 4), the one loaded view without drill-down. The scorecard,
+// questions, and gauge views are all selectable; explain is not.
 func TestDrillInertOnExplainView(t *testing.T) {
 	m := loadedModel(t)
 	m = press(m, "4") // explain view
@@ -153,7 +153,7 @@ func TestEnteringScorecardResetsSelection(t *testing.T) {
 func TestTabBackToScorecardResetsSelection(t *testing.T) {
 	m := loadedModel(t)
 	m = press(m, "j")   // selected=1
-	m = press(m, "tab") // -> radar
+	m = press(m, "tab") // -> questions
 	m = press(m, "tab") // -> gauges
 	m = press(m, "tab") // -> explain
 	m = press(m, "tab") // -> scorecard
