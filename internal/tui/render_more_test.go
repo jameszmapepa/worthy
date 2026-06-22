@@ -28,7 +28,7 @@ func TestRenderDispatchesAllViews(t *testing.T) {
 	for view, marker := range map[int]string{
 		0: "Grade",        // scorecard headline
 		1: "radar",        // radar title
-		2: "Commit trend", // gauges
+		2: "commit trend", // gauges sparkline label
 	} {
 		m.view = view
 		out := m.View().Content
@@ -80,7 +80,7 @@ func TestRenderGatesCriticalCap(t *testing.T) {
 	out := renderGates([]score.Gate{
 		{Key: "stale_or_archived", Severity: score.SeverityCritical, Title: "Archived", Detail: "dead", CapTo: &cap40},
 	})
-	if !strings.Contains(out, glyphCritical) || !strings.Contains(out, "caps at 40") {
+	if !strings.Contains(out, glyphCritical) || !strings.Contains(out, "caps 40") {
 		t.Errorf("critical gate render missing glyph/cap:\n%s", out)
 	}
 }

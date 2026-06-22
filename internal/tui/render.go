@@ -10,7 +10,10 @@ import (
 
 // render produces the full screen string for the current model state.
 func (m Model) render() string {
-	header := renderHeader(m.owner, m.repo, m.client.Authenticated(), m.width)
+	header := renderHeaderPanel(
+		m.owner, m.repo, m.raw,
+		m.state == stateLoaded, m.client.Authenticated(), m.width,
+	)
 
 	var body string
 	switch m.state {

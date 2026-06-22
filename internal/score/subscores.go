@@ -67,31 +67,15 @@ func releaseCadence(raw RawMetrics) SubScore {
 // issueCloseRatio scores closed/(open+closed) issues. No issues -> 50.
 func issueCloseRatio(raw RawMetrics) SubScore {
 	total := raw.OpenIssues + raw.ClosedIssues
-	value := 50.0
-	if total > 0 {
-		value = float64(raw.ClosedIssues) / float64(total) * 100
-	}
-	return SubScore{
-		Key:   "issue_close_ratio",
-		Label: "Issue close ratio",
-		Value: value,
-		Raw:   fmt.Sprintf("%d/%d issues closed", raw.ClosedIssues, total),
-	}
+	return ratioScore(raw.ClosedIssues, total, "issue_close_ratio", "Issue close ratio",
+		fmt.Sprintf("%d/%d issues closed", raw.ClosedIssues, total))
 }
 
 // prBacklog scores merged/(merged+open) PRs. No PRs -> 50.
 func prBacklog(raw RawMetrics) SubScore {
 	total := raw.MergedPRs + raw.OpenPRs
-	value := 50.0
-	if total > 0 {
-		value = float64(raw.MergedPRs) / float64(total) * 100
-	}
-	return SubScore{
-		Key:   "pr_backlog",
-		Label: "PR backlog",
-		Value: value,
-		Raw:   fmt.Sprintf("%d merged / %d open", raw.MergedPRs, raw.OpenPRs),
-	}
+	return ratioScore(raw.MergedPRs, total, "pr_backlog", "PR backlog",
+		fmt.Sprintf("%d merged / %d open", raw.MergedPRs, raw.OpenPRs))
 }
 
 // --- Community / Governance -------------------------------------------------
@@ -131,32 +115,16 @@ func issueResponsiveness(raw RawMetrics) SubScore {
 // prAcceptance scores merged/(merged+closedUnmerged) PRs. No closed PRs -> 50.
 func prAcceptance(raw RawMetrics) SubScore {
 	total := raw.MergedPRs + raw.ClosedUnmergedPRs
-	value := 50.0
-	if total > 0 {
-		value = float64(raw.MergedPRs) / float64(total) * 100
-	}
-	return SubScore{
-		Key:   "pr_acceptance",
-		Label: "PR acceptance",
-		Value: value,
-		Raw:   fmt.Sprintf("%d merged / %d rejected", raw.MergedPRs, raw.ClosedUnmergedPRs),
-	}
+	return ratioScore(raw.MergedPRs, total, "pr_acceptance", "PR acceptance",
+		fmt.Sprintf("%d merged / %d rejected", raw.MergedPRs, raw.ClosedUnmergedPRs))
 }
 
 // newcomerMergeRate scores newcomer merged/(merged+closedUnmerged). No
 // newcomer PRs -> 50 (unknown/neutral).
 func newcomerMergeRate(raw RawMetrics) SubScore {
 	total := raw.NewcomerPRsMerged + raw.NewcomerPRsClosedUnmerged
-	value := 50.0
-	if total > 0 {
-		value = float64(raw.NewcomerPRsMerged) / float64(total) * 100
-	}
-	return SubScore{
-		Key:   "newcomer_merge_rate",
-		Label: "Newcomer merge rate",
-		Value: value,
-		Raw:   fmt.Sprintf("%d/%d newcomer PRs merged", raw.NewcomerPRsMerged, total),
-	}
+	return ratioScore(raw.NewcomerPRsMerged, total, "newcomer_merge_rate", "Newcomer merge rate",
+		fmt.Sprintf("%d/%d newcomer PRs merged", raw.NewcomerPRsMerged, total))
 }
 
 // governanceDocs scores weighted presence of governance docs:
@@ -248,6 +216,18 @@ func workflowSafety(raw RawMetrics) SubScore {
 }
 
 // --- helpers ----------------------------------------------------------------
+
+// ratioScore builds a 0..100 sub-score as numerator/total × 100, treating an
+// empty denominator (total == 0) as a neutral 50 (no data). The raw metric
+// string is supplied by the caller because each ratio describes its inputs
+// differently.
+func ratioScore(numerator, total int, key, label, raw string) SubScore {
+	value := 50.0
+	if total > 0 {
+		value = float64(numerator) / float64(total) * 100
+	}
+	return SubScore{Key: key, Label: label, Value: value, Raw: raw}
+}
 
 // boolScore builds a 100/0 sub-score from a boolean.
 func boolScore(key, label string, ok bool, yes, no string) SubScore {

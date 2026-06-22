@@ -17,7 +17,75 @@ var (
 	colorAccent     = lipgloss.Color("#bd93f9") // headers/accents
 	colorBackground = lipgloss.Color("#282a36") // header bar background
 	colorTrackEmpty = lipgloss.Color("#44475a") // unfilled bar track
+	colorBorder     = lipgloss.Color("#44475a") // panel borders
 )
+
+// Per-category hues (Dracula) used to color radar axes and legends.
+var (
+	colorCatActivity  = lipgloss.Color("#8be9fd") // cyan
+	colorCatCommunity = lipgloss.Color("#ffb86c") // orange
+	colorCatSecurity  = lipgloss.Color("#ff79c6") // pink
+)
+
+// titledPanel wraps body in a rounded border with a small title label sitting
+// on the top edge. Used to compose the multi-panel dashboard views.
+func titledPanel(title, body string, border color.Color) string {
+	titled := titleStyle.Render(title) + "\n" + body
+	return lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(border).
+		Padding(0, 1).
+		Render(titled)
+}
+
+// categoryColor maps a category key to its display hue.
+func categoryColor(key string) color.Color {
+	switch key {
+	case "activity":
+		return colorCatActivity
+	case "community":
+		return colorCatCommunity
+	case "security":
+		return colorCatSecurity
+	default:
+		return colorFg
+	}
+}
+
+// gradientSteps is the resolution of the score gradient: enough stops for a
+// smooth red -> amber -> green sweep across a 0..100 bar.
+const gradientSteps = 24
+
+// scoreGradient is a precomputed red -> amber -> green color ramp. Bars index
+// into it by score so the fill is a smooth gradient rather than a flat band.
+var scoreGradient = lipgloss.Blend1D(gradientSteps, colorRed, colorAmber, colorGreen)
+
+// gradientIndex maps a 0..100 value to an index into an n-color ramp, clamped
+// to [0, n-1].
+func gradientIndex(value float64, n int) int {
+	if n <= 1 {
+		return 0
+	}
+	if value < 0 {
+		value = 0
+	}
+	if value > 100 {
+		value = 100
+	}
+	i := int(value / 100 * float64(n-1))
+	if i < 0 {
+		i = 0
+	}
+	if i >= n {
+		i = n - 1
+	}
+	return i
+}
+
+// gradientColor returns the score gradient color for a 0..100 value.
+func gradientColor(value float64) color.Color {
+	return scoreGradient[gradientIndex(value, len(scoreGradient))]
+}
 
 // Gate severity glyphs.
 const (
@@ -33,31 +101,12 @@ const (
 )
 
 var (
-	headerStyle = lipgloss.NewStyle().
-			Foreground(colorFg).
-			Background(colorBackground).
-			Bold(true).
-			Padding(0, 1)
-
 	titleStyle = lipgloss.NewStyle().Foreground(colorAccent).Bold(true)
 	labelStyle = lipgloss.NewStyle().Foreground(colorFg)
 	mutedStyle = lipgloss.NewStyle().Foreground(colorMuted)
 	gradeStyle = lipgloss.NewStyle().Foreground(colorAccent).Bold(true)
 	errStyle   = lipgloss.NewStyle().Foreground(colorRed).Bold(true)
 )
-
-// barColor maps a 0..100 score to its band color: green >=70, amber 40-69,
-// red <40.
-func barColor(value float64) color.Color {
-	switch {
-	case value >= 70:
-		return colorGreen
-	case value >= 40:
-		return colorAmber
-	default:
-		return colorRed
-	}
-}
 
 // severityStyle returns the glyph and color for a gate severity.
 func severityGlyph(severity string) (string, color.Color) {
@@ -69,41 +118,6 @@ func severityGlyph(severity string) (string, color.Color) {
 	default:
 		return glyphInfo, colorMuted
 	}
-}
-
-// renderHeader renders the top bar: repo identity and effective rate-limit mode.
-func renderHeader(owner, repo string, authenticated bool, width int) string {
-	mode := "60/hr unauthenticated"
-	if authenticated {
-		mode = "5,000/hr authenticated"
-	}
-	left := titleStyle.Render("repo-health") + "  " + owner + "/" + repo
-	right := mutedStyle.Render(mode)
-	bar := left + "   " + right
-	return headerStyle.Width(maxInt(width, lipgloss.Width(bar))).Render(bar)
-}
-
-// renderBar renders a colored horizontal bar of the given total cell width for
-// a 0..100 value. The fill color follows barColor.
-func renderBar(value float64, width int) string {
-	if width < 1 {
-		width = 1
-	}
-	if value < 0 {
-		value = 0
-	}
-	if value > 100 {
-		value = 100
-	}
-	filled := int(value/100*float64(width) + 0.5)
-	if filled > width {
-		filled = width
-	}
-	fill := lipgloss.NewStyle().Foreground(barColor(value)).
-		Render(strings.Repeat(barFilled, filled))
-	track := lipgloss.NewStyle().Foreground(colorTrackEmpty).
-		Render(strings.Repeat(barEmpty, width-filled))
-	return fill + track
 }
 
 // stripANSI removes ANSI escape sequences, leaving the visible runes. Used for
@@ -124,11 +138,4 @@ func stripANSI(s string) string {
 		}
 	}
 	return b.String()
-}
-
-func maxInt(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
 }
