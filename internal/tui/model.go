@@ -1,7 +1,7 @@
 // Package tui is the Bubble Tea (v2) terminal UI for repo-health. It runs the
 // metrics collection + scoring as an async command, then renders the resulting
-// score.Report across three switchable views: a scorecard, a radar, and gauges
-// with a commit-trend sparkline.
+// score.Report across four switchable views: a scorecard, a two-question
+// breakdown, gauges with a commit-trend sparkline, and an explain view.
 package tui
 
 import (
@@ -25,7 +25,7 @@ const (
 	stateErrored              // fetch failed
 )
 
-// viewCount is the number of switchable views (scorecard, radar, gauges,
+// viewCount is the number of switchable views (scorecard, questions, gauges,
 // explain).
 const viewCount = 4
 
@@ -193,14 +193,14 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 }
 
 // canSelect reports whether selection keys are active: on the loaded scorecard,
-// radar, and gauge views, each with at least one selectable item. They are inert
+// questions, and gauge views, each with at least one selectable item. They are inert
 // while loading, on error, and on the explain view.
 func (m Model) canSelect() bool {
 	return m.state == stateLoaded && m.currentSelectableCount() > 0
 }
 
 // currentSelectableCount is the number of selectable items in the active view.
-// The scorecard and radar select individual indicators (the flattened sub-score
+// The scorecard and questions views select individual indicators (the flattened sub-score
 // list); the gauge view selects whole categories. Other views select nothing.
 func (m Model) currentSelectableCount() int {
 	switch m.view {

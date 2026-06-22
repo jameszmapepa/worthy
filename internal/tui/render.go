@@ -51,7 +51,7 @@ func (m Model) renderError() string {
 func (m Model) renderActiveView() string {
 	switch m.view {
 	case 1:
-		return renderRadar(m.report, m.width, m.selected, m.expanded)
+		return renderQuestions(m.report, m.width, m.selected, m.expanded)
 	case 2:
 		return renderGauges(m.report, m.raw, m.width, m.selected, m.expanded)
 	case 3:
@@ -63,7 +63,7 @@ func (m Model) renderActiveView() string {
 
 // renderFooter shows the view tabs and key hints.
 func (m Model) renderFooter() string {
-	names := []string{"1 Scorecard", "2 Radar", "3 Gauges", "4 Explain"}
+	names := []string{"1 Scorecard", "2 Questions", "3 Gauges", "4 Explain"}
 	parts := make([]string, len(names))
 	for i, n := range names {
 		if i == m.view && m.state == stateLoaded {

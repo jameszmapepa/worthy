@@ -80,3 +80,35 @@ func fixedRaw() score.RawMetrics {
 		Watchers:           120,
 	}
 }
+
+// realReport runs the real scorer over a representative metrics snapshot, for
+// tests that need an end-to-end Report (verdict text, gate evaluation) rather
+// than the hand-built fixedReport.
+func realReport() score.Report {
+	return score.Evaluate(score.RawMetrics{
+		CommitsLast52Weeks:            []int{5, 6, 7, 8, 6, 5, 9, 7, 6, 8, 5, 7},
+		DaysSinceLastPush:             10,
+		RepoAgeDays:                   800,
+		OpenIssues:                    20,
+		ClosedIssues:                  180,
+		OpenPRs:                       5,
+		MergedPRs:                     60,
+		ClosedUnmergedPRs:             8,
+		MedianIssueFirstResponseHours: 30,
+		NewcomerPRsMerged:             5,
+		NewcomerPRsClosedUnmerged:     3,
+		TopContributorRecentShare:     0.5,
+		ContributorCount:              8,
+		ReleaseCount:                  6,
+		DaysSinceLastRelease:          120,
+		HasReadme:                     true,
+		HasContributing:               true,
+		HasLicense:                    true,
+		LicenseSPDX:                   "Apache-2.0",
+		HasCI:                         true,
+		HasSecurityPolicy:             false,
+		WorkflowsFetched:              true,
+		Stars:                         3000,
+		Watchers:                      400,
+	})
+}

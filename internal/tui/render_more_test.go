@@ -26,9 +26,9 @@ func TestRenderDispatchesAllViews(t *testing.T) {
 	m.raw = fixedRaw()
 
 	for view, marker := range map[int]string{
-		0: "Grade",        // scorecard headline
-		1: "radar",        // radar title
-		2: "commit trend", // gauges sparkline label
+		0: "Grade",         // scorecard headline
+		1: "Two questions", // questions view title
+		2: "commit trend",  // gauges sparkline label
 	} {
 		m.view = view
 		out := m.View().Content
