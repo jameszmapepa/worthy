@@ -22,11 +22,12 @@ var (
 // Gate is a conditional annotation on a Report. A non-nil CapTo additionally
 // caps the adjusted composite at that value.
 type Gate struct {
-	Key      string   // stable identifier
-	Severity string   // info | warn | critical
-	Title    string   // short headline
-	Detail   string   // one-line plain-language explanation
-	CapTo    *float64 // composite ceiling imposed by this gate, or nil for none
+	Key        string   // stable identifier
+	Severity   string   // info | warn | critical
+	Title      string   // short headline
+	Detail     string   // one-line plain-language explanation
+	HowToClear string   // one-line advisory on what would clear the gate
+	CapTo      *float64 // composite ceiling imposed by this gate, or nil for none
 }
 
 // subLookup carries the few sub-score values that gate predicates need, so
@@ -66,11 +67,12 @@ func evaluateGates(raw RawMetrics, rawComposite float64, subs subLookup) []Gate 
 func busFactorGate(raw RawMetrics) (Gate, bool) {
 	if raw.TopContributorRecentShare > 0.80 && raw.ContributorCount <= 2 {
 		return Gate{
-			Key:      "bus_factor",
-			Severity: SeverityWarn,
-			Title:    "Bus factor risk",
-			Detail:   "One contributor authors most recent commits with few others involved.",
-			CapTo:    ptr(capBusFactor),
+			Key:        "bus_factor",
+			Severity:   SeverityWarn,
+			Title:      "Bus factor risk",
+			Detail:     "One contributor authors most recent commits with few others involved.",
+			HowToClear: "Distribute commits beyond the top author and grow the contributor base.",
+			CapTo:      ptr(capBusFactor),
 		}, true
 	}
 	return Gate{}, false
@@ -82,11 +84,12 @@ func closedToStrangersGate(raw RawMetrics, subs subLookup) (Gate, bool) {
 	newcomerSample := raw.NewcomerPRsMerged + raw.NewcomerPRsClosedUnmerged
 	if subs.prAcceptance >= 70 && subs.newcomerMergeRate <= 15 && newcomerSample > 0 {
 		return Gate{
-			Key:      "closed_to_strangers",
-			Severity: SeverityWarn,
-			Title:    "Closed to newcomers",
-			Detail:   "PRs are accepted overall but newcomers' PRs are rarely merged.",
-			CapTo:    ptr(capStrangers),
+			Key:        "closed_to_strangers",
+			Severity:   SeverityWarn,
+			Title:      "Closed to newcomers",
+			Detail:     "PRs are accepted overall but newcomers' PRs are rarely merged.",
+			HowToClear: "Merge PRs from first-time and non-member contributors.",
+			CapTo:      ptr(capStrangers),
 		}, true
 	}
 	return Gate{}, false
@@ -104,11 +107,12 @@ func staleOrArchivedGate(raw RawMetrics, subs subLookup) (Gate, bool) {
 
 	if dead {
 		return Gate{
-			Key:      "stale_or_archived",
-			Severity: SeverityCritical,
-			Title:    "Archived or disabled",
-			Detail:   "The repository is archived or disabled and no longer accepts changes.",
-			CapTo:    ptr(capArchived),
+			Key:        "stale_or_archived",
+			Severity:   SeverityCritical,
+			Title:      "Archived or disabled",
+			Detail:     "The repository is archived or disabled and no longer accepts changes.",
+			HowToClear: "Archived in place; informational only.",
+			CapTo:      ptr(capArchived),
 		}, true
 	}
 
@@ -117,20 +121,22 @@ func staleOrArchivedGate(raw RawMetrics, subs subLookup) (Gate, bool) {
 	mature := raw.RepoAgeDays > 365 && subs.issueCloseRatio >= 70 && raw.ReleaseCount > 0
 	if mature {
 		return Gate{
-			Key:      "stale_or_archived",
-			Severity: SeverityInfo,
-			Title:    "Mature/stable, low cadence",
-			Detail:   "An established project with few recent pushes; likely stable rather than abandoned.",
-			CapTo:    nil,
+			Key:        "stale_or_archived",
+			Severity:   SeverityInfo,
+			Title:      "Mature/stable, low cadence",
+			Detail:     "An established project with few recent pushes; likely stable rather than abandoned.",
+			HowToClear: "Informational: established project, low recent activity.",
+			CapTo:      nil,
 		}, true
 	}
 
 	return Gate{
-		Key:      "stale_or_archived",
-		Severity: SeverityWarn,
-		Title:    "Stale",
-		Detail:   "No pushes in over a year; the project may be unmaintained.",
-		CapTo:    ptr(capStale),
+		Key:        "stale_or_archived",
+		Severity:   SeverityWarn,
+		Title:      "Stale",
+		Detail:     "No pushes in over a year; the project may be unmaintained.",
+		HowToClear: "Resume commits or cut a release.",
+		CapTo:      ptr(capStale),
 	}, true
 }
 
@@ -139,11 +145,12 @@ func staleOrArchivedGate(raw RawMetrics, subs subLookup) (Gate, bool) {
 func integrityRiskGate(raw RawMetrics, rawComposite float64) (Gate, bool) {
 	if raw.UsesPullRequestTarget && !raw.HasSignedReleaseAssets && rawComposite > 70 {
 		return Gate{
-			Key:      "integrity_risk",
-			Severity: SeverityWarn,
-			Title:    "Supply-chain integrity risk",
-			Detail:   "Uses pull_request_target and ships unsigned release assets.",
-			CapTo:    ptr(capIntegrity),
+			Key:        "integrity_risk",
+			Severity:   SeverityWarn,
+			Title:      "Supply-chain integrity risk",
+			Detail:     "Uses pull_request_target and ships unsigned release assets.",
+			HowToClear: "Sign release assets and drop pull_request_target workflows.",
+			CapTo:      ptr(capIntegrity),
 		}, true
 	}
 	return Gate{}, false
@@ -153,11 +160,12 @@ func integrityRiskGate(raw RawMetrics, rawComposite float64) (Gate, bool) {
 func vanityStarsGate(raw RawMetrics) (Gate, bool) {
 	if raw.Stars > 5000 && raw.Watchers*200 < raw.Stars {
 		return Gate{
-			Key:      "vanity_stars",
-			Severity: SeverityInfo,
-			Title:    "Stars outpace engagement",
-			Detail:   "High star count relative to watchers; popularity may exceed active use.",
-			CapTo:    nil,
+			Key:        "vanity_stars",
+			Severity:   SeverityInfo,
+			Title:      "Stars outpace engagement",
+			Detail:     "High star count relative to watchers; popularity may exceed active use.",
+			HowToClear: "Informational: stars are high relative to watchers.",
+			CapTo:      nil,
 		}, true
 	}
 	return Gate{}, false
