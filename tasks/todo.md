@@ -78,3 +78,35 @@ empty, rate-limit tail degraded gracefully. Throwaway smoke harness removed.
 
 Not done (offered as next steps): git init + first commit; optional `--plain`
 non-interactive output mode (V2); pagination beyond one page for very large repos.
+
+## Refactor + Interactive Enrichment (complete)
+
+Design: `docs/superpowers/specs/2026-06-22-repo-health-refactor-interactive-
+enrichment-design.md`. Shipped on branch `refactor/interactive-enrichment` as
+four focused, Dev-QA-gated commits (each: tester + senior-engineer, full
+`go test ./... -race` green). The prior uncommitted TUI polish pass rode in as
+the agreed working baseline (per the design), folded into the Stage 1 commit.
+
+- Stage 1 — `refactor:` decompose `metrics/collect.go` (473→230) into per-domain
+  files (+ split the 1814-line test into 6); add `tui/util.go`
+  (truncate/clampWidth/barColor/renderBar); extract `score.ratioScore`. Behavior
+  preserving — scores numerically unchanged.
+- Stage 2 — `feat:` score-model enrichment: `SubScore.Formula` + `SubScore.Gates`
+  (declarative gate linkage), `Gate.HowToClear`, `score.Drivers`. Metadata only;
+  no score/gate/grade changes. `SPEC.md` updated.
+- Stage 3 — `feat:` scorecard indicator drill-down (Enhancement A): j/k/↑/↓
+  selection, enter/→ expand, esc/← collapse; inline detail panel (formula, raw,
+  weight, category share, linked gates). Renders from `Report`, no new I/O.
+- Stage 4 — `feat:` Explain/Verdict view (Enhancement B, 4th view): verdict +
+  strongest/weakest drivers + per-gate how-to-clear; healthy-repo empty state.
+
+Acceptance (all met): build/vet/gofmt clean; `-race` green; coverage ≥80% per
+package (score 100, tui 95.5, metrics 91.1, github 90.5, cmd 87.8); no source
+file >400 lines (`collect.go` 230); repo scores identical to the pre-change
+baseline (enrichment adds explanation, not new scoring); `SPEC.md` reflects the
+new fields.
+
+Out of scope (deferred per design): `--json`/`--plain`, pagination, caching,
+new scoring metrics/gates, gate-inspector interactivity. Open follow-ons:
+drill-down for the radar/gauge views (split-pane/modal — V1 is scorecard-only);
+push branch + open PR into `develop`.
