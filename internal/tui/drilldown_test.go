@@ -79,16 +79,19 @@ func TestDrillInertWhileLoading(t *testing.T) {
 	}
 }
 
-func TestDrillInertOffScorecard(t *testing.T) {
+// TestDrillInertOnExplainView confirms selection keys are inert on the Explain
+// view (view 4), the one loaded view without drill-down. The scorecard, radar,
+// and gauge views are all selectable; explain is not.
+func TestDrillInertOnExplainView(t *testing.T) {
 	m := loadedModel(t)
-	m = press(m, "2") // radar view
+	m = press(m, "4") // explain view
 	m = press(m, "j")
 	if m.selected != 0 {
-		t.Errorf("selection must be inert off scorecard, got %d", m.selected)
+		t.Errorf("selection must be inert on the explain view, got %d", m.selected)
 	}
 	m = press(m, "enter")
 	if m.expanded {
-		t.Error("expand must be inert off scorecard")
+		t.Error("expand must be inert on the explain view")
 	}
 }
 

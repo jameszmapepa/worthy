@@ -40,7 +40,7 @@ func realReport() score.Report {
 
 func TestRadarLabelsEverySubScore(t *testing.T) {
 	r := realReport()
-	out := renderRadar(r, 80)
+	out := renderRadar(r, 80, -1, false)
 
 	for _, c := range r.Categories {
 		for _, s := range c.Subs {
@@ -54,7 +54,7 @@ func TestRadarLabelsEverySubScore(t *testing.T) {
 }
 
 func TestRadarShowsIndicatorCountAndLegend(t *testing.T) {
-	out := renderRadar(realReport(), 80)
+	out := renderRadar(realReport(), 80, -1, false)
 	if !strings.Contains(out, "14 indicators") {
 		t.Errorf("radar should announce the indicator count:\n%s", out)
 	}
@@ -66,7 +66,7 @@ func TestRadarShowsIndicatorCountAndLegend(t *testing.T) {
 }
 
 func TestRadarContainsBrailleGlyphs(t *testing.T) {
-	out := renderRadar(realReport(), 80)
+	out := renderRadar(realReport(), 80, -1, false)
 	hasBraille := false
 	for _, r := range out {
 		if r >= 0x2800 && r <= 0x28FF {
@@ -80,7 +80,7 @@ func TestRadarContainsBrailleGlyphs(t *testing.T) {
 }
 
 func TestRadarEmptyReportDoesNotPanic(t *testing.T) {
-	out := renderRadar(score.Report{}, 80)
+	out := renderRadar(score.Report{}, 80, -1, false)
 	if !strings.Contains(out, "no indicators") {
 		t.Errorf("empty radar should note no indicators, got:\n%s", out)
 	}
