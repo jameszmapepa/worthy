@@ -1,38 +1,21 @@
 // Package metrics collects raw repository signals from the GitHub API and
 // assembles them into a score.RawMetrics value. It performs no scoring — that
 // is the score package's job — keeping data collection and judgement separate.
+//
+// The collector is split by domain for readability: this file owns the Collect
+// orchestrator and its cross-cutting helpers, while the per-domain extraction
+// logic lives in collect_activity.go, collect_community.go, and
+// collect_security.go.
 package metrics
 
 import (
 	"context"
 	"errors"
-	"sort"
-	"strings"
 	"time"
 
 	"github.com/jameszmapepa/repo-health/internal/github"
 	"github.com/jameszmapepa/repo-health/internal/score"
 )
-
-// newcomerAssocs is the set of author_association values that qualify a PR
-// author as a newcomer for the newcomer-merge-rate metric.
-var newcomerAssocs = map[string]bool{
-	"FIRST_TIME_CONTRIBUTOR": true,
-	"NONE":                   true,
-	"CONTRIBUTOR":            true,
-}
-
-// signatureExts is the set of file-name suffixes that indicate a signed
-// release asset per the spec.
-var signatureExts = []string{".asc", ".sig", ".sigstore", ".intoto.jsonl"}
-
-// newcomerWindow is the look-back window for newcomer PR classification.
-const newcomerWindow = 90 * 24 * time.Hour
-
-// issueSampleCap is the maximum number of real issues (non-PR) we fetch
-// comments for when computing MedianIssueFirstResponseHours.
-// ceiling: 12 issues × 1 API call each = 12 calls; adjust if budget allows.
-const issueSampleCap = 12
 
 // Collect gathers every signal the scoring engine needs for owner/repo, using
 // the supplied client. Time-relative metrics are computed against now (injected
@@ -62,6 +45,8 @@ func Collect(ctx context.Context, c *github.Client, owner, repo string, now time
 	raw.Forks = repoData.Forks
 	raw.Archived = repoData.Archived
 	raw.Disabled = repoData.Disabled
+	raw.Description = repoData.Description
+	raw.Language = repoData.Language
 	raw.DaysSinceLastPush = int(now.Sub(repoData.PushedAt).Hours() / 24)
 	raw.RepoAgeDays = int(now.Sub(repoData.CreatedAt).Hours() / 24)
 	if repoData.License != nil {
@@ -148,7 +133,6 @@ func Collect(ctx context.Context, c *github.Client, owner, repo string, now time
 	// ------------------------------------------------------------------ //
 	// 7. Issue + PR counts.                                               //
 	// ------------------------------------------------------------------ //
-	var ctxErr error
 	openIssues, closedIssues, openPRs, closedPRs, partialCounts, ctxErr :=
 		collectCounts(ctx, c, owner, repo)
 	if ctxErr != nil {
@@ -193,142 +177,10 @@ func Collect(ctx context.Context, c *github.Client, owner, repo string, now time
 	return raw, nil
 }
 
-// ------------------------------------------------------------------ //
-// Helpers                                                             //
-// ------------------------------------------------------------------ //
-
 // isContextError reports whether err is a context cancellation or timeout.
 // These abort the whole collection rather than degrading to Partial.
 func isContextError(err error) bool {
 	return errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)
-}
-
-// busFactor computes TopContributorRecentShare and ContributorCount from the
-// last 12 weeks of each contributor's commit series.
-func busFactor(stats []github.ContributorStats) (topShare float64, count int) {
-	type loginCommits struct {
-		login   string
-		commits int
-	}
-	var contributors []loginCommits
-	for _, s := range stats {
-		weeks := s.Weeks
-		// Take last 12 weeks; fewer weeks means fewer entries.
-		start := len(weeks) - 12
-		if start < 0 {
-			start = 0
-		}
-		total := 0
-		for _, w := range weeks[start:] {
-			total += w.Commits
-		}
-		if total > 0 {
-			contributors = append(contributors, loginCommits{s.Author.Login, total})
-		}
-	}
-	count = len(contributors)
-	if count == 0 {
-		return 0, 0
-	}
-	grandTotal := 0
-	topCommits := 0
-	for _, lc := range contributors {
-		grandTotal += lc.commits
-		if lc.commits > topCommits {
-			topCommits = lc.commits
-		}
-	}
-	if grandTotal == 0 {
-		return 0, count
-	}
-	return float64(topCommits) / float64(grandTotal), count
-}
-
-// processReleases filters out draft and prerelease entries, counts the
-// remainder, computes DaysSinceLastRelease (from the most recent real
-// release), and detects signed assets.
-func processReleases(releases []github.Release, now time.Time) (count, daysSince int, signed bool) {
-	for _, r := range releases {
-		if r.Draft || r.Prerelease {
-			continue
-		}
-		count++
-		if r.PublishedAt != nil && count == 1 {
-			// Most-recent real release (API returns newest first).
-			daysSince = int(now.Sub(*r.PublishedAt).Hours() / 24)
-		}
-		if !signed {
-			for _, a := range r.Assets {
-				if hasSignatureExt(a.Name) {
-					signed = true
-					break
-				}
-			}
-		}
-	}
-	return count, daysSince, signed
-}
-
-// hasSignatureExt reports whether name ends with a signature extension.
-func hasSignatureExt(name string) bool {
-	for _, ext := range signatureExts {
-		if strings.HasSuffix(name, ext) {
-			return true
-		}
-	}
-	return false
-}
-
-// processWorkflows determines HasCI, UsesPullRequestTarget, and
-// WorkflowsFetched by fetching each workflow file's content and scanning for
-// the literal "pull_request_target" string.
-//
-// Per-file tolerance: a fetch failure (404, rate-limit, network) on an
-// individual file is silently skipped — the scan continues with any files that
-// could be fetched.
-//   - WorkflowsFetched=true if at least one file was successfully fetched.
-//   - UsesPullRequestTarget=true if any successfully-fetched file contained
-//     the trigger literal.
-//   - "workflow_safety" is appended to partial only when ZERO files could be
-//     fetched (total failure).
-func processWorkflows(
-	ctx context.Context,
-	c *github.Client,
-	owner, repo string,
-	workflows []github.Workflow,
-	partial *[]string,
-) (hasCI, usesPRT, fetched bool) {
-	for _, wf := range workflows {
-		if wf.State == "active" {
-			hasCI = true
-		}
-	}
-
-	if len(workflows) == 0 {
-		// Nothing to fetch; WorkflowsFetched stays false but no partial entry —
-		// the repo simply has no workflows.
-		return hasCI, false, false
-	}
-
-	// Attempt to fetch each workflow file. Tolerate per-file failures.
-	for _, wf := range workflows {
-		body, err := c.FileContent(ctx, owner, repo, wf.Path)
-		if err != nil {
-			// Skip this file; continue scanning others.
-			continue
-		}
-		fetched = true
-		if strings.Contains(string(body), "pull_request_target") {
-			usesPRT = true
-		}
-	}
-
-	if !fetched {
-		// Could not fetch any file — safety state is unknown.
-		*partial = append(*partial, "workflow_safety")
-		return hasCI, false, false
-	}
-	return hasCI, usesPRT, true
 }
 
 // collectCounts fetches open/closed issue counts and PR counts.
@@ -367,99 +219,6 @@ func collectCounts(
 	}
 
 	return openIssues, closedIssues, openPRs, closedPRs, partial, nil
-}
-
-// processPulls splits a closed-PR page into merged/unmerged counts and
-// separately counts newcomer PRs (filtered by assoc, window, and self-merge).
-func processPulls(prs []github.PullRequest, now time.Time) (merged, unmerged, newcomerMerged, newcomerUnmerged int) {
-	windowStart := now.Add(-newcomerWindow)
-	for _, pr := range prs {
-		if pr.IsMerged() {
-			merged++
-		} else {
-			unmerged++
-		}
-
-		// Newcomer classification.
-		if !newcomerAssocs[pr.AuthorAssoc] {
-			continue
-		}
-		// Must be within the 90-day window (use ClosedAt as the reference).
-		if pr.ClosedAt == nil || pr.ClosedAt.Before(windowStart) {
-			continue
-		}
-		// Exclude self-merges.
-		if pr.IsMerged() && pr.MergedBy != nil && pr.MergedBy.Login == pr.User.Login {
-			continue
-		}
-		if pr.IsMerged() {
-			newcomerMerged++
-		} else {
-			newcomerUnmerged++
-		}
-	}
-	return merged, unmerged, newcomerMerged, newcomerUnmerged
-}
-
-// isBot reports whether a github.User is a bot: login ends with "[bot]" or
-// User.Type is "Bot".
-func isBot(u github.User) bool {
-	return strings.HasSuffix(u.Login, "[bot]") || u.Type == "Bot"
-}
-
-// medianTTFR computes the median time-to-first-response in hours across a
-// sample of real (non-PR) issues. It skips issues where no qualifying
-// response exists (first comment by someone other than the author, not a bot).
-//
-// ceiling: samples up to issueSampleCap (12) issues × 1 API call each;
-// adjust cap if budget allows more calls.
-func medianTTFR(
-	ctx context.Context,
-	c *github.Client,
-	owner, repo string,
-	issues []github.Issue,
-) float64 {
-	var hours []float64
-	sampled := 0
-
-	for _, iss := range issues {
-		if iss.IsPullRequest() {
-			continue
-		}
-		if sampled >= issueSampleCap {
-			break
-		}
-		sampled++
-
-		comments, err := c.IssueComments(ctx, owner, repo, iss.Number)
-		if err != nil {
-			continue
-		}
-		for _, cm := range comments {
-			if cm.User.Login == iss.User.Login {
-				continue // same author
-			}
-			if isBot(cm.User) {
-				continue // bot
-			}
-			// First qualifying response found.
-			h := cm.CreatedAt.Sub(iss.CreatedAt).Hours()
-			if h >= 0 {
-				hours = append(hours, h)
-			}
-			break
-		}
-	}
-
-	if len(hours) == 0 {
-		return 0
-	}
-	sort.Float64s(hours)
-	mid := len(hours) / 2
-	if len(hours)%2 == 0 {
-		return (hours[mid-1] + hours[mid]) / 2
-	}
-	return hours[mid]
 }
 
 // clampZero returns n if n >= 0, else 0.

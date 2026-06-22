@@ -41,6 +41,7 @@ type Report struct {
 	AdjustedComposite float64         // composite after applying gate caps, one decimal
 	Grade             string          // letter grade on AdjustedComposite: A/B/C/D/F
 	Gates             []Gate          // conditional annotations, some of which cap
+	Verdict           string          // one-sentence plain-language summary
 }
 
 // Evaluate scores a RawMetrics snapshot into a Report. It is pure: the input is
@@ -80,13 +81,16 @@ func Evaluate(raw RawMetrics) Report {
 	})
 
 	adjusted := round1(applyCaps(composite, gates))
+	grade := letterGrade(adjusted)
+	cats := []CategoryScore{activity, community, security}
 
 	return Report{
-		Categories:        []CategoryScore{activity, community, security},
+		Categories:        cats,
 		Composite:         composite,
 		AdjustedComposite: adjusted,
-		Grade:             letterGrade(adjusted),
+		Grade:             grade,
 		Gates:             gates,
+		Verdict:           buildVerdict(cats, grade, gates),
 	}
 }
 

@@ -22,6 +22,7 @@ type License struct {
 type Repo struct {
 	FullName      string    `json:"full_name"`
 	Description   string    `json:"description"`
+	Language      string    `json:"language"`
 	Stargazers    int       `json:"stargazers_count"`
 	Watchers      int       `json:"subscribers_count"` // true watchers; watchers_count aliases stars
 	Forks         int       `json:"forks_count"`

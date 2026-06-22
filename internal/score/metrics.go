@@ -68,6 +68,10 @@ type RawMetrics struct {
 	Archived bool // repository is archived (read-only)
 	Disabled bool // repository is disabled
 
+	// Presentation metadata (not scored; surfaced in the TUI header).
+	Description string // repository description ("" if none)
+	Language    string // primary language ("" if none)
+
 	// Partial records the names of metrics that were skipped during collection
 	// due to rate-limit or 404 responses, so the UI can flag incomplete data.
 	Partial []string
