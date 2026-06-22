@@ -17,19 +17,21 @@ import (
 func commitFrequency(raw RawMetrics) SubScore {
 	if len(raw.CommitsLast52Weeks) == 0 {
 		return SubScore{
-			Key:   "commit_frequency",
-			Label: "Commit frequency",
-			Value: 50,
-			Raw:   "no commit data",
+			Key:     "commit_frequency",
+			Label:   "Commit frequency",
+			Value:   50,
+			Formula: "min(100, median12/15 × 100)",
+			Raw:     "no commit data",
 		}
 	}
 	median := medianLast(raw.CommitsLast52Weeks, 12)
 	value := clamp(median/15*100, 0, 100)
 	return SubScore{
-		Key:   "commit_frequency",
-		Label: "Commit frequency",
-		Value: value,
-		Raw:   fmt.Sprintf("%.1f commits/wk (median, 12wk)", median),
+		Key:     "commit_frequency",
+		Label:   "Commit frequency",
+		Value:   value,
+		Formula: "min(100, median12/15 × 100)",
+		Raw:     fmt.Sprintf("%.1f commits/wk (median, 12wk)", median),
 	}
 }
 
@@ -37,10 +39,11 @@ func commitFrequency(raw RawMetrics) SubScore {
 func commitRecency(raw RawMetrics) SubScore {
 	value := clamp(100-float64(raw.DaysSinceLastPush)/365*100, 0, 100)
 	return SubScore{
-		Key:   "commit_recency",
-		Label: "Commit recency",
-		Value: value,
-		Raw:   fmt.Sprintf("%dd since last push", raw.DaysSinceLastPush),
+		Key:     "commit_recency",
+		Label:   "Commit recency",
+		Value:   value,
+		Formula: "max(0, 100 − days/365 × 100)",
+		Raw:     fmt.Sprintf("%dd since last push", raw.DaysSinceLastPush),
 	}
 }
 
@@ -57,10 +60,11 @@ func releaseCadence(raw RawMetrics) SubScore {
 		rawDesc = fmt.Sprintf("%dd since last release", raw.DaysSinceLastRelease)
 	}
 	return SubScore{
-		Key:   "release_cadence",
-		Label: "Release cadence",
-		Value: value,
-		Raw:   rawDesc,
+		Key:     "release_cadence",
+		Label:   "Release cadence",
+		Value:   value,
+		Formula: "0 releases → 40; else linear 90→730d",
+		Raw:     rawDesc,
 	}
 }
 
@@ -68,6 +72,7 @@ func releaseCadence(raw RawMetrics) SubScore {
 func issueCloseRatio(raw RawMetrics) SubScore {
 	total := raw.OpenIssues + raw.ClosedIssues
 	return ratioScore(raw.ClosedIssues, total, "issue_close_ratio", "Issue close ratio",
+		"closed / (open+closed) × 100",
 		fmt.Sprintf("%d/%d issues closed", raw.ClosedIssues, total))
 }
 
@@ -75,6 +80,7 @@ func issueCloseRatio(raw RawMetrics) SubScore {
 func prBacklog(raw RawMetrics) SubScore {
 	total := raw.MergedPRs + raw.OpenPRs
 	return ratioScore(raw.MergedPRs, total, "pr_backlog", "PR backlog",
+		"merged / (merged+open) × 100",
 		fmt.Sprintf("%d merged / %d open", raw.MergedPRs, raw.OpenPRs))
 }
 
@@ -105,10 +111,11 @@ func issueResponsiveness(raw RawMetrics) SubScore {
 		rawDesc = fmt.Sprintf("%.0fh to first response", h)
 	}
 	return SubScore{
-		Key:   "issue_responsiveness",
-		Label: "Issue responsiveness",
-		Value: value,
-		Raw:   rawDesc,
+		Key:     "issue_responsiveness",
+		Label:   "Issue responsiveness",
+		Value:   value,
+		Formula: "≤24h→100; ≤168h→100..60; ≤720h→60..0; else 0",
+		Raw:     rawDesc,
 	}
 }
 
@@ -116,6 +123,7 @@ func issueResponsiveness(raw RawMetrics) SubScore {
 func prAcceptance(raw RawMetrics) SubScore {
 	total := raw.MergedPRs + raw.ClosedUnmergedPRs
 	return ratioScore(raw.MergedPRs, total, "pr_acceptance", "PR acceptance",
+		"merged / (merged+rejected) × 100",
 		fmt.Sprintf("%d merged / %d rejected", raw.MergedPRs, raw.ClosedUnmergedPRs))
 }
 
@@ -124,6 +132,7 @@ func prAcceptance(raw RawMetrics) SubScore {
 func newcomerMergeRate(raw RawMetrics) SubScore {
 	total := raw.NewcomerPRsMerged + raw.NewcomerPRsClosedUnmerged
 	return ratioScore(raw.NewcomerPRsMerged, total, "newcomer_merge_rate", "Newcomer merge rate",
+		"merged / (merged+rejected) × 100",
 		fmt.Sprintf("%d/%d newcomer PRs merged", raw.NewcomerPRsMerged, total))
 }
 
@@ -144,10 +153,11 @@ func governanceDocs(raw RawMetrics) SubScore {
 		v += 0.30
 	}
 	return SubScore{
-		Key:   "governance_docs",
-		Label: "Governance docs",
-		Value: v * 100,
-		Raw:   fmt.Sprintf("%d%% docs present", raw.HealthPercentage),
+		Key:     "governance_docs",
+		Label:   "Governance docs",
+		Value:   v * 100,
+		Formula: "README·.25 + CONTRIB·.25 + CoC·.2 + LICENSE·.3",
+		Raw:     fmt.Sprintf("%d%% docs present", raw.HealthPercentage),
 	}
 }
 
@@ -163,10 +173,11 @@ func licenseScore(raw RawMetrics) SubScore {
 		desc = "none"
 	}
 	return SubScore{
-		Key:   "license",
-		Label: "License",
-		Value: value,
-		Raw:   desc,
+		Key:     "license",
+		Label:   "License",
+		Value:   value,
+		Formula: "recognized SPDX → 100; else 0",
+		Raw:     desc,
 	}
 }
 
@@ -174,7 +185,8 @@ func licenseScore(raw RawMetrics) SubScore {
 
 // ciPresent is 100 when at least one active workflow exists, else 0.
 func ciPresent(raw RawMetrics) SubScore {
-	return boolScore("ci_present", "CI present", raw.HasCI, "CI active", "no CI")
+	return boolScore("ci_present", "CI present", raw.HasCI, "CI active", "no CI",
+		"CI present → 100; else 0")
 }
 
 // signedReleases is 100 with signed assets, 40 when there are no releases,
@@ -190,13 +202,14 @@ func signedReleases(raw RawMetrics) SubScore {
 	default:
 		value, desc = 0, "unsigned releases"
 	}
-	return SubScore{Key: "signed_releases", Label: "Signed releases", Value: value, Raw: desc}
+	return SubScore{Key: "signed_releases", Label: "Signed releases", Value: value,
+		Formula: "signed → 100; no releases → 40; else 0", Raw: desc}
 }
 
 // securityPolicy is 100 with a SECURITY policy present, else 0.
 func securityPolicy(raw RawMetrics) SubScore {
 	return boolScore("security_policy", "Security policy", raw.HasSecurityPolicy,
-		"policy present", "no policy")
+		"policy present", "no policy", "policy present → 100; else 0")
 }
 
 // workflowSafety is 30 when pull_request_target is used, 70 when workflows were
@@ -212,7 +225,8 @@ func workflowSafety(raw RawMetrics) SubScore {
 	default:
 		value, desc = 100, "no risky triggers"
 	}
-	return SubScore{Key: "workflow_safety", Label: "Workflow safety", Value: value, Raw: desc}
+	return SubScore{Key: "workflow_safety", Label: "Workflow safety", Value: value,
+		Formula: "pull_request_target → 30; unfetched → 70; else 100", Raw: desc}
 }
 
 // --- helpers ----------------------------------------------------------------
@@ -221,23 +235,23 @@ func workflowSafety(raw RawMetrics) SubScore {
 // empty denominator (total == 0) as a neutral 50 (no data). The raw metric
 // string is supplied by the caller because each ratio describes its inputs
 // differently.
-func ratioScore(numerator, total int, key, label, raw string) SubScore {
+func ratioScore(numerator, total int, key, label, formula, raw string) SubScore {
 	value := 50.0
 	if total > 0 {
 		value = float64(numerator) / float64(total) * 100
 	}
-	return SubScore{Key: key, Label: label, Value: value, Raw: raw}
+	return SubScore{Key: key, Label: label, Value: value, Formula: formula, Raw: raw}
 }
 
 // boolScore builds a 100/0 sub-score from a boolean.
-func boolScore(key, label string, ok bool, yes, no string) SubScore {
+func boolScore(key, label string, ok bool, yes, no, formula string) SubScore {
 	value := 0.0
 	desc := no
 	if ok {
 		value = 100
 		desc = yes
 	}
-	return SubScore{Key: key, Label: label, Value: value, Raw: desc}
+	return SubScore{Key: key, Label: label, Value: value, Formula: formula, Raw: desc}
 }
 
 // linearDown maps x to 100 at or below lo, 0 at or above hi, linear between.

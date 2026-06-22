@@ -89,7 +89,18 @@ aborts the whole collection. Bot-filter: exclude users whose login ends in
 ### Sub-scores (each 0..100, with a documented formula)
 
 Each sub-score is a named function `func(raw RawMetrics) SubScore` where
-`SubScore{ Key, Label, Value float64 (0..100), Raw string (human metric), Weight }`.
+`SubScore{ Key, Label, Value float64 (0..100), Raw string (human metric),
+Formula string, Weight, Gates []string }`.
+
+- `Formula` is the human-readable scoring formula (the documented forms below),
+  surfaced verbatim in the scorecard drill-down and Explain view.
+- `Gates` lists the keys of gates whose trigger condition references this
+  sub-score, derived declaratively from the gate predicates: `pr_acceptance`
+  and `newcomer_merge_rate` → `closed_to_strangers`; `commit_recency`,
+  `issue_close_ratio`, `release_cadence` → `stale_or_archived`;
+  `workflow_safety`, `signed_releases` → `integrity_risk`. Other sub-scores
+  carry an empty slice. `bus_factor` and `vanity_stars` reference only raw
+  metrics, so no sub-score links to them.
 
 **Activity category (weight 0.40):**
 - `commit_frequency`: median weekly commits over last 12 weeks. Saturating curve:
@@ -130,8 +141,11 @@ A >=85, B >=70, C >=55, D >=40, F <40.
 
 ### Gates (conditional flags that annotate AND may cap the composite)
 
-Returned as `[]Gate{ Key, Severity (info|warn|critical), Title, Detail, CapTo *float64 }`.
+Returned as `[]Gate{ Key, Severity (info|warn|critical), Title, Detail,
+HowToClear string, CapTo *float64 }`.
 `AdjustedComposite = min(rawComposite, min(all gate CapTo))`.
+`HowToClear` is a one-line advisory on what would clear the gate (guidance only;
+it introduces no new thresholds and does not affect scoring).
 
 1. **bus_factor** (`TopContributorRecentShare > 0.80` AND `ContributorCount<=2`):
    warn, CapTo 70.

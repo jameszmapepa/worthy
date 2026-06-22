@@ -18,11 +18,29 @@ const (
 
 // SubScore is a single scored health indicator in the range 0..100.
 type SubScore struct {
-	Key    string  // stable identifier, e.g. "commit_frequency"
-	Label  string  // human-readable name
-	Value  float64 // score in 0..100
-	Raw    string  // human-readable underlying metric (e.g. "12.0 commits/wk")
-	Weight float64 // weight of this sub-score within its category
+	Key     string   // stable identifier, e.g. "commit_frequency"
+	Label   string   // human-readable name
+	Value   float64  // score in 0..100
+	Raw     string   // human-readable underlying metric (e.g. "12.0 commits/wk")
+	Formula string   // human-readable scoring formula (see docs/SPEC.md)
+	Weight  float64  // weight of this sub-score within its category
+	Gates   []string // keys of gates whose trigger condition references this sub-score
+}
+
+// subScoreGateLinks maps a sub-score key to the keys of the gates whose trigger
+// condition references that sub-score (derived from the predicates in gates.go).
+// It is declarative so the scorecard drill-down and Explain view can show which
+// gates an indicator feeds without re-deriving the linkage. Sub-scores absent
+// here carry no links. bus_factor and vanity_stars reference only raw metrics,
+// so no sub-score links to them.
+var subScoreGateLinks = map[string][]string{
+	"pr_acceptance":       {"closed_to_strangers"},
+	"newcomer_merge_rate": {"closed_to_strangers"},
+	"commit_recency":      {"stale_or_archived"},
+	"issue_close_ratio":   {"stale_or_archived"},
+	"release_cadence":     {"stale_or_archived"},
+	"workflow_safety":     {"integrity_risk"},
+	"signed_releases":     {"integrity_risk"},
 }
 
 // CategoryScore is the weighted aggregate of a category's sub-scores.
@@ -106,6 +124,7 @@ func makeCategory(key, label string, weight float64, subs []SubScore) CategorySc
 	weighted := make([]SubScore, n)
 	for i, s := range subs {
 		s.Weight = w
+		s.Gates = subScoreGateLinks[s.Key]
 		weighted[i] = s
 		sum += s.Value
 	}
