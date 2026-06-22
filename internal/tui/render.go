@@ -55,7 +55,7 @@ func (m Model) renderActiveView() string {
 	case 2:
 		return renderGauges(m.report, m.raw, m.width)
 	default:
-		return renderScorecard(m.report, m.width)
+		return renderScorecard(m.report, m.width, m.selected, m.expanded)
 	}
 }
 
@@ -71,7 +71,11 @@ func (m Model) renderFooter() string {
 		}
 	}
 	tabs := strings.Join(parts, " ")
-	keys := mutedStyle.Render("tab/1-3 switch · r refresh · q quit")
+	hint := "tab/1-3 switch · r refresh · q quit"
+	if m.view == 0 && m.state == stateLoaded {
+		hint = "↑↓ select · enter drill · " + hint
+	}
+	keys := mutedStyle.Render(hint)
 	return tabs + "    " + keys
 }
 

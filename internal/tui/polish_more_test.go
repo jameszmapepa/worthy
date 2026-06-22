@@ -84,7 +84,7 @@ func TestDrawRingTinyRadiusNoPanic(t *testing.T) {
 
 func TestVerdictAppearsInScorecardHero(t *testing.T) {
 	r := realReport()
-	out := renderScorecard(r, 100)
+	out := renderScorecard(r, 100, -1, false)
 	// The verdict's grade phrase should be embedded in the hero block.
 	if r.Verdict == "" || !strings.Contains(out, "health") {
 		t.Errorf("scorecard hero should contain the verdict:\n%s", out)

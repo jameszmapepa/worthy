@@ -6,7 +6,7 @@ import (
 )
 
 func TestScorecardViewContent(t *testing.T) {
-	out := renderScorecard(fixedReport(), 80)
+	out := renderScorecard(fixedReport(), 80, -1, false)
 
 	wants := []string{
 		"68.2",                // adjusted composite
@@ -27,7 +27,7 @@ func TestScorecardViewContent(t *testing.T) {
 }
 
 func TestScorecardGateGlyphs(t *testing.T) {
-	out := renderScorecard(fixedReport(), 80)
+	out := renderScorecard(fixedReport(), 80, -1, false)
 	if !strings.Contains(out, glyphWarn) {
 		t.Errorf("scorecard missing warn glyph %q", glyphWarn)
 	}

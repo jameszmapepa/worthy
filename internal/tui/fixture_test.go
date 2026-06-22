@@ -12,9 +12,9 @@ func fixedReport() score.Report {
 			{
 				Key: score.CategoryActivity, Label: "Activity", Value: 82.5, Weight: 0.40,
 				Subs: []score.SubScore{
-					{Key: "commit_frequency", Label: "Commit frequency", Value: 90, Raw: "13.5 commits/wk", Weight: 0.2},
-					{Key: "commit_recency", Label: "Commit recency", Value: 55, Raw: "164d since last push", Weight: 0.2},
-					{Key: "release_cadence", Label: "Release cadence", Value: 30, Raw: "300d since last release", Weight: 0.2},
+					{Key: "commit_frequency", Label: "Commit frequency", Value: 90, Raw: "13.5 commits/wk", Formula: "min(100, median12/15 × 100)", Weight: 0.2},
+					{Key: "commit_recency", Label: "Commit recency", Value: 55, Raw: "164d since last push", Formula: "max(0, 100 − days/365 × 100)", Weight: 0.2, Gates: []string{"stale_or_archived"}},
+					{Key: "release_cadence", Label: "Release cadence", Value: 30, Raw: "300d since last release", Formula: "0 releases → 40; else linear 90→730d", Weight: 0.2, Gates: []string{"stale_or_archived"}},
 				},
 			},
 			{
