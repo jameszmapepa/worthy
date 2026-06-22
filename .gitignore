@@ -1,0 +1,24 @@
+# Binaries
+/worthy
+/bin/
+*.exe
+*.out
+
+# Release artifacts (GoReleaser output; RELEASE_NOTES.md is generated in CI and
+# must be ignored so GoReleaser's clean-git-state check passes)
+/dist/
+/RELEASE_NOTES.md
+
+# Test / coverage artifacts
+*.test
+coverage.out
+coverage.html
+
+# Go workspace
+go.work
+go.work.sum
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/
