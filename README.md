@@ -90,14 +90,20 @@ The TUI opens on the scorecard. Switch views and interact with:
 | Key | Action |
 |---|---|
 | `tab` | cycle views |
-| `1` / `2` / `3` | scorecard / radar / gauges |
+| `1` / `2` / `3` / `4` | scorecard / radar / gauges / explain |
+| `↑` `↓` or `j` `k` | move the selected indicator (scorecard) |
+| `enter` / `→` | open the indicator drill-down (scorecard) |
+| `esc` / `←` | close the drill-down (or quit when nothing is open) |
 | `r` | re-fetch and re-score |
-| `q` · `esc` · `ctrl-c` | quit |
+| `q` · `ctrl-c` | quit |
 
 - **Scorecard** — composite + grade, per-indicator color-coded bars, and the
-  triggered gates.
+  triggered gates. Select any indicator and drill in to see its formula, raw
+  metric, weight, contribution to its category, and the gates it feeds.
 - **Radar** — all category scores on one ASCII radar.
 - **Gauges** — category gauges plus a sparkline of the 52-week commit trend.
+- **Explain** — a plain-language verdict, the strongest and weakest indicators,
+  and each triggered gate with how to clear it (or a clean bill of health).
 
 ## Rate limits
 
@@ -121,7 +127,7 @@ cmd/repohealth/     CLI entry point + argument parsing
 internal/github/    dependency-free GitHub REST client (stdlib only)
 internal/metrics/   collects raw signals from the API (bot-filtering, graceful degradation)
 internal/score/     pure scoring engine: sub-scores, composite, gates (no network)
-internal/tui/       Bubble Tea v2 UI: three views
+internal/tui/       Bubble Tea v2 UI: four views + scorecard drill-down
 docs/SPEC.md        the design contract (metrics, formulas, weights, endpoints)
 ```
 
@@ -129,15 +135,32 @@ Built with [Bubble Tea](https://github.com/charmbracelet/bubbletea),
 [Lip Gloss](https://github.com/charmbracelet/lipgloss), and
 [ntcharts](https://github.com/NimbleMarkets/ntcharts).
 
-## Development
+## Running & developing locally
+
+Requires Go 1.26+. A `Makefile` wraps the common tasks — run `make` for the
+full list:
 
 ```bash
-go test ./... -race -cover    # full suite
+make run REPO=owner/repo   # run the TUI against any repo (no build step)
+make run                   # uses the default repo (charmbracelet/bubbletea)
+make build                 # compile to ./bin/repohealth
+make test-race             # full test suite with the race detector
+make cover                 # write coverage.out + coverage.html
+make check                 # fmt-check + vet + test-race (pre-commit gate)
+```
+
+Without `make`, the raw equivalents are:
+
+```bash
+go run ./cmd/repohealth owner/repo   # run it locally
+go test ./... -race -cover           # full suite
 go vet ./...
 gofmt -l .
 ```
 
-The scoring engine is pure and tested to 100%; overall package coverage is 87–100%.
+The scoring engine is pure and tested to 100%; overall package coverage is
+87–100%. Set `GITHUB_TOKEN` first to lift the unauthenticated 60 req/hr limit
+to 5,000/hr.
 
 ## Caveats
 
