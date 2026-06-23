@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strconv"
+	"sync"
 	"testing"
 	"time"
 
@@ -191,18 +192,21 @@ func TestCollect_ContextCancelled_Aborts(t *testing.T) {
 		case "/repos/acme/widget":
 			w.WriteHeader(http.StatusOK)
 			_, _ = fmt.Fprint(w, repoJSON)
-			// Signal the test that the first call succeeded, then cancel.
+			// Signal the test that the repo gate succeeded, then cancel.
 			close(cancelCh)
 		default:
-			// All subsequent endpoints: cancel is already in flight; the http
-			// client will either not reach here or return a context error.
+			// Every fan-out endpoint blocks until the request context is
+			// cancelled, so once cancel fires (post-repo) all in-flight calls
+			// abort with a context error deterministically — regardless of
+			// which collectors the bounded pool scheduled first.
+			<-r.Context().Done()
 			w.WriteHeader(http.StatusOK)
 			_, _ = w.Write([]byte(`{}`))
 		}
 	}))
 	defer srv.Close()
 
-	// Cancel the context as soon as the repo call completes.
+	// Cancel the context as soon as the repo gate completes.
 	go func() {
 		<-cancelCh
 		cancel()
@@ -216,6 +220,62 @@ func TestCollect_ContextCancelled_Aborts(t *testing.T) {
 	}
 	if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
 		t.Errorf("want context error; got %v", err)
+	}
+}
+
+// TestCollect_ContextCancelled_MidFanOut proves that cancellation after the
+// repository gate propagates through the errgroup fan-out workers and causes
+// Collect to return a context error. This specifically exercises the
+// g.Wait() → non-nil error path in Collect (collect.go:90-92).
+//
+// Design: fan-out endpoints acquire a semaphore slot then block UNTIL cancel
+// fires. We guarantee cancel fires only after c.Repository has returned by
+// waiting for fanoutReadyCh (signalled when the first fan-out request arrives
+// at the server). This means at least one worker is mid-flight when cancel
+// fires, so withCall / the HTTP call returns a context error, the worker
+// returns it through the errgroup, and g.Wait() propagates it to Collect.
+func TestCollect_ContextCancelled_MidFanOut(t *testing.T) {
+	now, _ := time.Parse(time.RFC3339, "2026-06-22T00:00:00Z")
+
+	// fanoutReadyCh is closed the first time a fan-out endpoint is hit.
+	fanoutReadyCh := make(chan struct{})
+	var fanoutOnce sync.Once
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/repos/acme/widget":
+			w.WriteHeader(http.StatusOK)
+			_, _ = fmt.Fprint(w, repoJSON)
+		default:
+			// Signal that at least one fan-out worker is in-flight.
+			fanoutOnce.Do(func() { close(fanoutReadyCh) })
+			// Block until the context is cancelled; the HTTP client then sees a
+			// context error, which each worker propagates through the errgroup.
+			<-r.Context().Done()
+			// Writing after Done races with the client giving up; we write
+			// nothing so the client always gets a context error.
+		}
+	}))
+	defer srv.Close()
+
+	// Cancel only after a fan-out worker is confirmed in-flight — guaranteeing
+	// c.Repository has returned and the errgroup is running.
+	go func() {
+		<-fanoutReadyCh
+		cancel()
+	}()
+
+	c := client(srv)
+	_, err := Collect(ctx, c, "acme", "widget", now)
+	if err == nil {
+		t.Fatal("expected context error from mid-fan-out cancellation; got nil")
+	}
+	if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
+		t.Errorf("want context.Canceled or DeadlineExceeded; got %v", err)
 	}
 }
 
@@ -326,14 +386,18 @@ func TestCollect_MultipleEndpoints500_AllDegrade(t *testing.T) {
 // collectCounts: context abort mid-counts propagates as an error
 // ---------------------------------------------------------------------------
 
+// TestCollect_CollectCounts_ContextAbort verifies the counts collector aborts
+// with a context error when cancellation fires. The original premise (a strict
+// workflows-then-counts ordering) no longer holds under concurrency, so this
+// uses the deterministic repo-triggered-cancel pattern: the repo gate succeeds
+// and cancels, and every fan-out endpoint blocks on the request context being
+// done, so all in-flight calls (counts included) abort with a context error.
 func TestCollect_CollectCounts_ContextAbort(t *testing.T) {
 	now, _ := time.Parse(time.RFC3339, "2026-06-22T00:00:00Z")
 
+	cancelCh := make(chan struct{})
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-
-	// Track whether we've hit the workflows endpoint (step 6, just before counts).
-	workflowsDone := make(chan struct{})
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -341,43 +405,24 @@ func TestCollect_CollectCounts_ContextAbort(t *testing.T) {
 		case "/repos/acme/widget":
 			w.WriteHeader(http.StatusOK)
 			_, _ = fmt.Fprint(w, repoJSON)
-		case "/repos/acme/widget/community/profile":
-			w.WriteHeader(http.StatusOK)
-			_, _ = fmt.Fprint(w, communityJSON)
-		case "/repos/acme/widget/stats/contributors":
-			w.WriteHeader(http.StatusOK)
-			_, _ = fmt.Fprint(w, `[]`)
-		case "/repos/acme/widget/stats/commit_activity":
-			w.WriteHeader(http.StatusOK)
-			_, _ = fmt.Fprint(w, `[]`)
-		case "/repos/acme/widget/releases":
-			w.WriteHeader(http.StatusOK)
-			_, _ = fmt.Fprint(w, `[]`)
-		case "/repos/acme/widget/actions/workflows":
-			w.WriteHeader(http.StatusOK)
-			_, _ = fmt.Fprint(w, `{"total_count":0,"workflows":[]}`)
-			// Cancel the context after workflows — next is collectCounts.
-			select {
-			case <-workflowsDone:
-			default:
-				close(workflowsDone)
-				cancel()
-			}
+			close(cancelCh)
 		default:
-			// All count endpoints will see a cancelled context.
+			<-r.Context().Done()
 			w.WriteHeader(http.StatusOK)
 			_, _ = fmt.Fprint(w, `[]`)
 		}
 	}))
 	defer srv.Close()
 
-	// Wait for the cancel signal before letting Collect proceed past workflows.
-	go func() { <-workflowsDone }()
+	go func() {
+		<-cancelCh
+		cancel()
+	}()
 
 	c := client(srv)
 	_, err := Collect(ctx, c, "acme", "widget", now)
 	if err == nil {
-		t.Fatal("expected context error after cancellation at counts step; got nil")
+		t.Fatal("expected context error after cancellation; got nil")
 	}
 	if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
 		t.Errorf("want context error; got %v", err)
