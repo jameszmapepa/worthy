@@ -56,7 +56,7 @@ type Client struct {
 	baseURL    string
 	token      string
 	maxRetries int           // for 202 (stats recompute) responses
-	retryWait  time.Duration // base wait between 202 retries
+	retryWait  time.Duration // fixed wait between 202 retries
 }
 
 // Option configures a Client.
@@ -95,7 +95,8 @@ func NewClient(opts ...Option) *Client {
 		httpClient: &http.Client{Timeout: 20 * time.Second, Transport: transport},
 		baseURL:    defaultBaseURL,
 		token:      os.Getenv("GITHUB_TOKEN"),
-		maxRetries: 3,
+		// 6 fixed 1.5s polls => a ~9s budget for cold stats, evenly spaced.
+		maxRetries: 6,
 		retryWait:  1500 * time.Millisecond,
 	}
 	for _, o := range opts {
@@ -154,11 +155,14 @@ func (c *Client) getWithHeader(ctx context.Context, path string, out any) (http.
 
 		case resp.StatusCode == http.StatusAccepted:
 			// Stats endpoints return 202 while GitHub computes the result in the
-			// background. Retry a bounded number of times, then give up cleanly.
+			// background. The very first request triggers that computation, so we
+			// poll at a FIXED interval (not escalating) up to maxRetries times:
+			// finer, evenly-spaced polling catches the "just finished" moment
+			// sooner without changing the total budget (maxRetries*retryWait).
 			if attempt >= c.maxRetries {
 				return nil, fmt.Errorf("github still computing stats for %s after %d retries", path, attempt)
 			}
-			if err := sleep(ctx, c.retryWait*time.Duration(attempt+1)); err != nil {
+			if err := sleep(ctx, c.retryWait); err != nil {
 				return nil, err
 			}
 			continue

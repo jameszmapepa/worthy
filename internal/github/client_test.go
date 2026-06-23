@@ -123,6 +123,38 @@ func TestGet_202ExhaustsRetries(t *testing.T) {
 	}
 }
 
+func TestGet_202FlatBackoff(t *testing.T) {
+	// The 202-recompute retry must wait a FIXED interval (retryWait) per
+	// attempt, not an escalating one. With a flat schedule the total wait
+	// before giving up is retries*retryWait; an escalating schedule would be
+	// ~retries*(retries+1)/2*retryWait. retries=5, wait=30ms => flat 150ms vs
+	// escalating ~450ms, so the elapsed time distinguishes the two.
+	calls := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		w.WriteHeader(http.StatusAccepted)
+	}))
+	defer srv.Close()
+
+	const retries = 5
+	const wait = 30 * time.Millisecond
+	c := newTestClient(srv, WithRetry(retries, wait))
+
+	start := time.Now()
+	err := c.get(context.Background(), "/stats", nil)
+	elapsed := time.Since(start)
+
+	if err == nil {
+		t.Fatal("expected error after exhausting 202 retries")
+	}
+	if calls != retries+1 {
+		t.Errorf("server calls = %d; want %d (initial request + %d retries)", calls, retries+1, retries)
+	}
+	if maxFlat := retries*wait + 150*time.Millisecond; elapsed > maxFlat {
+		t.Errorf("elapsed %v exceeds flat budget %v; backoff appears to be escalating", elapsed, maxFlat)
+	}
+}
+
 func TestGet_202ContextCancel(t *testing.T) {
 	// Server always returns 202; we cancel the context; expect context error fast.
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
