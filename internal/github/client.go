@@ -18,6 +18,14 @@ const (
 	defaultBaseURL = "https://api.github.com"
 	apiVersion     = "2022-11-28"
 	userAgent      = "repo-health (https://github.com/jameszmapepa/repo-health)"
+
+	// maxIdleConnsPerHost sizes the connection pool for the single host we
+	// talk to. The default Transport caps this at 2, which serialises
+	// concurrent calls onto two sockets and defeats the bounded worker pool.
+	// ceiling: should track metrics.maxConcurrency (8). We cannot import that
+	// package without a cycle, so the value is duplicated here intentionally;
+	// keep them in sync if the concurrency bound changes.
+	maxIdleConnsPerHost = 8
 )
 
 // RateLimitError is returned when the GitHub API rejects a request because the
@@ -72,8 +80,19 @@ func WithRetry(max int, wait time.Duration) Option {
 // not supplied via WithToken it falls back to the GITHUB_TOKEN environment
 // variable when present. No token is ever required.
 func NewClient(opts ...Option) *Client {
+	// Clone the default transport so we can size its per-host pool without
+	// mutating the shared global. Guard the assertion: if a caller has
+	// replaced http.DefaultTransport with a non-*http.Transport, fall back to
+	// a fresh one rather than panicking at startup.
+	transport := &http.Transport{}
+	if dt, ok := http.DefaultTransport.(*http.Transport); ok {
+		transport = dt.Clone()
+	}
+	transport.MaxIdleConnsPerHost = maxIdleConnsPerHost
+	transport.MaxConnsPerHost = maxIdleConnsPerHost
+
 	c := &Client{
-		httpClient: &http.Client{Timeout: 20 * time.Second},
+		httpClient: &http.Client{Timeout: 20 * time.Second, Transport: transport},
 		baseURL:    defaultBaseURL,
 		token:      os.Getenv("GITHUB_TOKEN"),
 		maxRetries: 3,

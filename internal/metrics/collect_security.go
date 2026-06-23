@@ -5,6 +5,8 @@ import (
 	"strings"
 
 	"github.com/jameszmapepa/repo-health/internal/github"
+	"golang.org/x/sync/errgroup"
+	"golang.org/x/sync/semaphore"
 )
 
 // signatureExts is the set of file-name suffixes that indicate a signed
@@ -31,15 +33,19 @@ func hasSignatureExt(name string) bool {
 //   - WorkflowsFetched=true if at least one file was successfully fetched.
 //   - UsesPullRequestTarget=true if any successfully-fetched file contained
 //     the trigger literal.
-//   - "workflow_safety" is appended to partial only when ZERO files could be
-//     fetched (total failure).
+//   - needsPartial is true only when ZERO files could be fetched (total
+//     failure); the caller records "workflow_safety" in its own partial slot.
+//
+// File fetches fan out under the shared semaphore and gctx. Per-file
+// non-context failures are silently skipped; a context cancellation/deadline
+// is propagated as the returned error so the caller can abort.
 func processWorkflows(
-	ctx context.Context,
+	gctx context.Context,
 	c *github.Client,
 	owner, repo string,
+	sem *semaphore.Weighted,
 	workflows []github.Workflow,
-	partial *[]string,
-) (hasCI, usesPRT, fetched bool) {
+) (hasCI, usesPRT, fetched, needsPartial bool, err error) {
 	for _, wf := range workflows {
 		if wf.State == "active" {
 			hasCI = true
@@ -49,14 +55,39 @@ func processWorkflows(
 	if len(workflows) == 0 {
 		// Nothing to fetch; WorkflowsFetched stays false but no partial entry —
 		// the repo simply has no workflows.
-		return hasCI, false, false
+		return hasCI, false, false, false, nil
 	}
 
-	// Attempt to fetch each workflow file. Tolerate per-file failures.
-	for _, wf := range workflows {
-		body, err := c.FileContent(ctx, owner, repo, wf.Path)
-		if err != nil {
-			// Skip this file; continue scanning others.
+	// Indexed per-file results; each goroutine writes only its own slot.
+	bodies := make([][]byte, len(workflows))
+
+	g, ictx := errgroup.WithContext(gctx)
+	// ceiling: the shared semaphore already bounds concurrent HTTP calls
+	// globally; SetLimit additionally bounds goroutine CREATION so a repo
+	// listing very many workflows cannot spawn an unbounded number of parked
+	// goroutines waiting on the semaphore.
+	g.SetLimit(maxConcurrency)
+	for i, wf := range workflows {
+		g.Go(func() error {
+			return withCall(ictx, sem, func() error {
+				body, fetchErr := c.FileContent(ictx, owner, repo, wf.Path)
+				if fetchErr != nil {
+					if isContextError(fetchErr) {
+						return fetchErr
+					}
+					return nil // swallow per-file failure
+				}
+				bodies[i] = body
+				return nil
+			})
+		})
+	}
+	if waitErr := g.Wait(); waitErr != nil {
+		return hasCI, false, false, false, waitErr
+	}
+
+	for _, body := range bodies {
+		if body == nil {
 			continue
 		}
 		fetched = true
@@ -67,8 +98,7 @@ func processWorkflows(
 
 	if !fetched {
 		// Could not fetch any file — safety state is unknown.
-		*partial = append(*partial, "workflow_safety")
-		return hasCI, false, false
+		return hasCI, false, false, true, nil
 	}
-	return hasCI, usesPRT, true
+	return hasCI, usesPRT, true, false, nil
 }

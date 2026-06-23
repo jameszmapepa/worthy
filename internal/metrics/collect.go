@@ -15,7 +15,16 @@ import (
 
 	"github.com/jameszmapepa/repo-health/internal/github"
 	"github.com/jameszmapepa/repo-health/internal/score"
+	"golang.org/x/sync/errgroup"
+	"golang.org/x/sync/semaphore"
 )
+
+// maxConcurrency bounds the number of GitHub HTTP calls Collect runs at once.
+// ceiling: 8 keeps us far under GitHub's secondary concurrent-request limit
+// (~100). The total request COUNT is unchanged by concurrency, so the primary
+// rate limit (5000/hr auth, 60/hr anon) is unaffected; only the secondary
+// concurrent limit applies. Raise cautiously if the secondary limit allows.
+const maxConcurrency = 8
 
 // Collect gathers every signal the scoring engine needs for owner/repo, using
 // the supplied client. Time-relative metrics are computed against now (injected
@@ -40,6 +49,54 @@ func Collect(ctx context.Context, c *github.Client, owner, repo string, now time
 	if err != nil {
 		return score.RawMetrics{}, err
 	}
+	applyRepo(&raw, repoData, now)
+
+	// ------------------------------------------------------------------ //
+	// All remaining calls are independent. Run them under a bounded       //
+	// worker pool. Each collector writes ONLY its own result variable, so //
+	// there is no shared mutable state and no mutex: race-freedom by       //
+	// construction. Partial is assembled in a fixed canonical order AFTER  //
+	// Wait, by this single goroutine, for deterministic output.            //
+	//                                                                      //
+	// gctx cancels the moment any collector returns a non-nil error.       //
+	// Collectors return a non-nil error ONLY for context cancellation /    //
+	// deadline; every other failure is recorded in their own partial slot  //
+	// and returns nil (graceful degradation, unchanged from the serial     //
+	// implementation).                                                     //
+	// ------------------------------------------------------------------ //
+	g, gctx := errgroup.WithContext(ctx)
+	sem := semaphore.NewWeighted(maxConcurrency)
+
+	var (
+		comm     communityResult
+		contrib  contributorResult
+		commits  commitResult
+		rels     releaseResult
+		flows    workflowResult
+		counts   countResult
+		closedPR closedPullsResult
+		ttfr     ttfrResult
+	)
+
+	g.Go(func() error { return collectCommunity(gctx, c, owner, repo, sem, &comm) })
+	g.Go(func() error { return collectContributors(gctx, c, owner, repo, sem, &contrib) })
+	g.Go(func() error { return collectCommits(gctx, c, owner, repo, sem, &commits) })
+	g.Go(func() error { return collectReleases(gctx, c, owner, repo, sem, now, &rels) })
+	g.Go(func() error { return collectWorkflows(gctx, c, owner, repo, sem, &flows) })
+	g.Go(func() error { return collectCounts(gctx, c, owner, repo, sem, &counts) })
+	g.Go(func() error { return collectClosedPulls(gctx, c, owner, repo, sem, now, &closedPR) })
+	g.Go(func() error { return collectTTFR(gctx, c, owner, repo, sem, &ttfr) })
+
+	if err := g.Wait(); err != nil {
+		return raw, err
+	}
+
+	assemble(&raw, &comm, &contrib, &commits, &rels, &flows, &counts, &closedPR, &ttfr)
+	return raw, nil
+}
+
+// applyRepo copies the core repository fields onto raw.
+func applyRepo(raw *score.RawMetrics, repoData *github.Repo, now time.Time) {
 	raw.Stars = repoData.Stargazers
 	raw.Watchers = repoData.Watchers
 	raw.Forks = repoData.Forks
@@ -52,173 +109,70 @@ func Collect(ctx context.Context, c *github.Client, owner, repo string, now time
 	if repoData.License != nil {
 		raw.LicenseSPDX = repoData.License.SPDXID
 	}
+}
 
-	// ------------------------------------------------------------------ //
-	// 2. Community profile — 404 on forks; degrade gracefully.           //
-	// ------------------------------------------------------------------ //
-	community, err := c.CommunityProfile(ctx, owner, repo)
-	if err != nil {
-		if isContextError(err) {
-			return raw, err
-		}
-		raw.Partial = append(raw.Partial, "community_profile")
-	} else {
-		raw.HealthPercentage = community.HealthPercentage
-		raw.HasReadme = community.Files.Readme != nil
-		raw.HasContributing = community.Files.Contributing != nil
-		raw.HasLicense = community.Files.License != nil
-		raw.HasCodeOfConduct = community.Files.CodeOfConduct != nil
-		raw.HasSecurityPolicy = community.Files.SecurityPol != nil
+// assemble merges the per-collector results onto raw and builds Partial in the
+// canonical order. Running in the single Collect goroutine after Wait, it sees
+// fully-published results with no synchronisation needed.
+func assemble(
+	raw *score.RawMetrics,
+	comm *communityResult,
+	contrib *contributorResult,
+	commits *commitResult,
+	rels *releaseResult,
+	flows *workflowResult,
+	counts *countResult,
+	closedPR *closedPullsResult,
+	ttfr *ttfrResult,
+) {
+	if comm.ok {
+		raw.HealthPercentage = comm.healthPercentage
+		raw.HasReadme = comm.hasReadme
+		raw.HasContributing = comm.hasContributing
+		raw.HasLicense = comm.hasLicense
+		raw.HasCodeOfConduct = comm.hasCodeOfConduct
+		raw.HasSecurityPolicy = comm.hasSecurityPolicy
 	}
+	raw.TopContributorRecentShare = contrib.topShare
+	raw.ContributorCount = contrib.count
+	raw.CommitsLast52Weeks = commits.weekly
+	raw.ReleaseCount = rels.count
+	raw.DaysSinceLastRelease = rels.daysSince
+	raw.HasSignedReleaseAssets = rels.signed
+	raw.HasCI = flows.hasCI
+	raw.UsesPullRequestTarget = flows.usesPRT
+	raw.WorkflowsFetched = flows.fetched
+	raw.OpenPRs = counts.openPRs
+	raw.OpenIssues = clampZero(counts.openIssues - counts.openPRs)
+	raw.ClosedIssues = clampZero(counts.closedIssues - counts.closedPRs)
+	raw.MergedPRs = closedPR.merged
+	raw.ClosedUnmergedPRs = closedPR.unmerged
+	raw.NewcomerPRsMerged = closedPR.newcomerMerged
+	raw.NewcomerPRsClosedUnmerged = closedPR.newcomerUnmerged
+	raw.MedianIssueFirstResponseHours = ttfr.median
 
-	// ------------------------------------------------------------------ //
-	// 3. Contributor stats (bus factor).                                  //
-	// ------------------------------------------------------------------ //
-	stats, err := c.ContributorStats(ctx, owner, repo)
-	if err != nil {
-		if isContextError(err) {
-			return raw, err
-		}
-		raw.Partial = append(raw.Partial, "contributor_stats")
-	} else {
-		raw.TopContributorRecentShare, raw.ContributorCount = busFactor(stats)
+	// Canonical Partial order; append only the degradations that occurred.
+	appendPartial(raw, comm.partial)
+	appendPartial(raw, contrib.partial)
+	appendPartial(raw, commits.partial)
+	appendPartial(raw, rels.partial)
+	appendPartial(raw, flows.partial)
+	raw.Partial = append(raw.Partial, counts.partial...)
+	appendPartial(raw, closedPR.partial)
+	appendPartial(raw, ttfr.partial)
+}
+
+// appendPartial appends a single non-empty partial marker to raw.Partial.
+func appendPartial(raw *score.RawMetrics, marker string) {
+	if marker != "" {
+		raw.Partial = append(raw.Partial, marker)
 	}
-
-	// ------------------------------------------------------------------ //
-	// 4. Commit activity (52-week series).                                //
-	// ------------------------------------------------------------------ //
-	weeks, err := c.CommitActivity(ctx, owner, repo)
-	if err != nil {
-		if isContextError(err) {
-			return raw, err
-		}
-		raw.Partial = append(raw.Partial, "commit_activity")
-	} else {
-		raw.CommitsLast52Weeks = make([]int, len(weeks))
-		for i, w := range weeks {
-			raw.CommitsLast52Weeks[i] = w.Total
-		}
-	}
-
-	// ------------------------------------------------------------------ //
-	// 5. Releases (exclude draft + prerelease).                           //
-	// ceiling: fetch up to 100 releases (pageSize); increase if repos    //
-	// with >100 releases need accurate DaysSinceLastRelease.             //
-	// ------------------------------------------------------------------ //
-	releases, err := c.Releases(ctx, owner, repo, 100)
-	if err != nil {
-		if isContextError(err) {
-			return raw, err
-		}
-		raw.Partial = append(raw.Partial, "releases")
-	} else {
-		raw.ReleaseCount, raw.DaysSinceLastRelease, raw.HasSignedReleaseAssets =
-			processReleases(releases, now)
-	}
-
-	// ------------------------------------------------------------------ //
-	// 6. Workflows: HasCI + UsesPullRequestTarget.                        //
-	// ------------------------------------------------------------------ //
-	workflows, err := c.Workflows(ctx, owner, repo)
-	if err != nil {
-		if isContextError(err) {
-			return raw, err
-		}
-		raw.Partial = append(raw.Partial, "workflows")
-	} else {
-		raw.HasCI, raw.UsesPullRequestTarget, raw.WorkflowsFetched =
-			processWorkflows(ctx, c, owner, repo, workflows, &raw.Partial)
-	}
-
-	// ------------------------------------------------------------------ //
-	// 7. Issue + PR counts.                                               //
-	// ------------------------------------------------------------------ //
-	openIssues, closedIssues, openPRs, closedPRs, partialCounts, ctxErr :=
-		collectCounts(ctx, c, owner, repo)
-	if ctxErr != nil {
-		return raw, ctxErr
-	}
-	raw.Partial = append(raw.Partial, partialCounts...)
-	raw.OpenPRs = openPRs
-
-	// Subtract PRs from the /issues endpoint results (which includes PRs).
-	raw.OpenIssues = clampZero(openIssues - openPRs)
-	raw.ClosedIssues = clampZero(closedIssues - closedPRs)
-
-	// ------------------------------------------------------------------ //
-	// 8. Closed PRs: MergedPRs, ClosedUnmergedPRs, newcomer stats.       //
-	// ------------------------------------------------------------------ //
-	closedPullsList, err := c.RecentPulls(ctx, owner, repo, "closed")
-	if err != nil {
-		if isContextError(err) {
-			return raw, err
-		}
-		raw.Partial = append(raw.Partial, "closed_pulls")
-	} else {
-		raw.MergedPRs, raw.ClosedUnmergedPRs,
-			raw.NewcomerPRsMerged, raw.NewcomerPRsClosedUnmerged =
-			processPulls(closedPullsList, now)
-	}
-
-	// ------------------------------------------------------------------ //
-	// 9. Median issue first-response hours (bot-filtered TTFR).          //
-	// ------------------------------------------------------------------ //
-	recentIssues, err := c.RecentIssues(ctx, owner, repo, "all")
-	if err != nil {
-		if isContextError(err) {
-			return raw, err
-		}
-		raw.Partial = append(raw.Partial, "issue_ttfr")
-	} else {
-		raw.MedianIssueFirstResponseHours =
-			medianTTFR(ctx, c, owner, repo, recentIssues)
-	}
-
-	return raw, nil
 }
 
 // isContextError reports whether err is a context cancellation or timeout.
 // These abort the whole collection rather than degrading to Partial.
 func isContextError(err error) bool {
 	return errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)
-}
-
-// collectCounts fetches open/closed issue counts and PR counts.
-// It returns a context error (ctxErr) when the context is cancelled so the
-// caller can abort; for all other errors it records the metric name in partial
-// and continues.
-func collectCounts(
-	ctx context.Context,
-	c *github.Client,
-	owner, repo string,
-) (openIssues, closedIssues, openPRs, closedPRs int, partial []string, ctxErr error) {
-	var err error
-
-	openIssues, err = c.CountByState(ctx, owner, repo, "issues", "open")
-	if err != nil {
-		if isContextError(err) {
-			return 0, 0, 0, 0, nil, err
-		}
-		partial = append(partial, "issue_count_open")
-	}
-
-	closedIssues, err = c.CountByState(ctx, owner, repo, "issues", "closed")
-	if err != nil {
-		if isContextError(err) {
-			return 0, 0, 0, 0, nil, err
-		}
-		partial = append(partial, "issue_count_closed")
-	}
-
-	openPRs, closedPRs, err = c.PullRequestCounts(ctx, owner, repo)
-	if err != nil {
-		if isContextError(err) {
-			return 0, 0, 0, 0, nil, err
-		}
-		partial = append(partial, "pr_counts")
-	}
-
-	return openIssues, closedIssues, openPRs, closedPRs, partial, nil
 }
 
 // clampZero returns n if n >= 0, else 0.

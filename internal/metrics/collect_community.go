@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"github.com/jameszmapepa/repo-health/internal/github"
+	"golang.org/x/sync/errgroup"
+	"golang.org/x/sync/semaphore"
 )
 
 // newcomerAssocs is the set of author_association values that qualify a PR
@@ -69,51 +71,79 @@ func isBot(u github.User) bool {
 //
 // ceiling: samples up to issueSampleCap (12) issues × 1 API call each;
 // adjust cap if budget allows more calls.
+//
+// The per-issue comment fetches fan out under the shared semaphore and gctx.
+// Non-context per-issue failures are swallowed (that issue is skipped); only
+// a context cancellation/deadline is propagated, returned as the error so the
+// caller can abort the whole collection.
 func medianTTFR(
-	ctx context.Context,
+	gctx context.Context,
 	c *github.Client,
 	owner, repo string,
+	sem *semaphore.Weighted,
 	issues []github.Issue,
-) float64 {
-	var hours []float64
-	sampled := 0
-
+) (float64, error) {
+	// Pick the sample of real (non-PR) issues, preserving order.
+	sample := make([]github.Issue, 0, issueSampleCap)
 	for _, iss := range issues {
 		if iss.IsPullRequest() {
 			continue
 		}
-		if sampled >= issueSampleCap {
+		if len(sample) >= issueSampleCap {
 			break
 		}
-		sampled++
-
-		comments, err := c.IssueComments(ctx, owner, repo, iss.Number)
-		if err != nil {
-			continue
-		}
-		for _, cm := range comments {
-			if cm.User.Login == iss.User.Login {
-				continue // same author
-			}
-			if isBot(cm.User) {
-				continue // bot
-			}
-			// First qualifying response found.
-			h := cm.CreatedAt.Sub(iss.CreatedAt).Hours()
-			if h >= 0 {
-				hours = append(hours, h)
-			}
-			break
-		}
+		sample = append(sample, iss)
 	}
 
+	// Indexed result slots; -1 marks "no qualifying response". Each goroutine
+	// writes only its own index, so no synchronisation is needed.
+	hoursByIssue := make([]float64, len(sample))
+	for i := range hoursByIssue {
+		hoursByIssue[i] = -1
+	}
+
+	g, ictx := errgroup.WithContext(gctx)
+	for i, iss := range sample {
+		g.Go(func() error {
+			return withCall(ictx, sem, func() error {
+				comments, err := c.IssueComments(ictx, owner, repo, iss.Number)
+				if err != nil {
+					if isContextError(err) {
+						return err
+					}
+					return nil // swallow per-issue failure
+				}
+				for _, cm := range comments {
+					if cm.User.Login == iss.User.Login || isBot(cm.User) {
+						continue
+					}
+					h := cm.CreatedAt.Sub(iss.CreatedAt).Hours()
+					if h >= 0 {
+						hoursByIssue[i] = h
+					}
+					break
+				}
+				return nil
+			})
+		})
+	}
+	if err := g.Wait(); err != nil {
+		return 0, err
+	}
+
+	hours := make([]float64, 0, len(sample))
+	for _, h := range hoursByIssue {
+		if h >= 0 {
+			hours = append(hours, h)
+		}
+	}
 	if len(hours) == 0 {
-		return 0
+		return 0, nil
 	}
 	sort.Float64s(hours)
 	mid := len(hours) / 2
 	if len(hours)%2 == 0 {
-		return (hours[mid-1] + hours[mid]) / 2
+		return (hours[mid-1] + hours[mid]) / 2, nil
 	}
-	return hours[mid]
+	return hours[mid], nil
 }
