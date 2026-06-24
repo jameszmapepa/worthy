@@ -91,6 +91,20 @@ func (c *Client) RecentPulls(ctx context.Context, owner, repo, state string) ([]
 	return ps, nil
 }
 
+// RecentPullsByCreation fetches up to one page (100) of pull requests across
+// all states, sorted by creation date descending. Used to build the 90-day PR
+// creation cohort for pr_backlog without disturbing the existing RecentPulls
+// call site (closed PRs, sorted by updated, for pr_acceptance/newcomer data).
+func (c *Client) RecentPullsByCreation(ctx context.Context, owner, repo string) ([]PullRequest, error) {
+	var ps []PullRequest
+	path := fmt.Sprintf("/repos/%s/%s/pulls?state=all&per_page=%d&sort=created&direction=desc",
+		url.PathEscape(owner), url.PathEscape(repo), pageSize)
+	if err := c.get(ctx, path, &ps); err != nil {
+		return nil, err
+	}
+	return ps, nil
+}
+
 // RecentIssues fetches up to one page (100) of issues (which, per the GitHub
 // API, also includes pull requests — callers filter with Issue.IsPullRequest).
 func (c *Client) RecentIssues(ctx context.Context, owner, repo, state string) ([]Issue, error) {
@@ -113,36 +127,6 @@ func (c *Client) IssueComments(ctx context.Context, owner, repo string, number i
 		return nil, err
 	}
 	return cs, nil
-}
-
-// CountByState returns the total number of issues or PRs in a state using the
-// Link-header trick: a per_page=1 request whose rel="last" page number equals
-// the total count. resource is "issues" or "pulls". Falls back to the returned
-// slice length for single-page collections.
-func (c *Client) CountByState(ctx context.Context, owner, repo, resource, state string) (int, error) {
-	path := fmt.Sprintf("/repos/%s/%s/%s?state=%s&per_page=1",
-		url.PathEscape(owner), url.PathEscape(repo), resource, state)
-	var items []map[string]any
-	header, err := c.getWithHeader(ctx, path, &items)
-	if err != nil {
-		return 0, err
-	}
-	if n, ok := lastPageCount(header); ok {
-		return n, nil
-	}
-	return len(items), nil
-}
-
-// PullRequestCounts returns (open, closedTotal) PR counts. closedTotal includes
-// both merged and closed-unmerged PRs.
-func (c *Client) PullRequestCounts(ctx context.Context, owner, repo string) (open, closed int, err error) {
-	if open, err = c.CountByState(ctx, owner, repo, "pulls", "open"); err != nil {
-		return 0, 0, err
-	}
-	if closed, err = c.CountByState(ctx, owner, repo, "pulls", "closed"); err != nil {
-		return 0, 0, err
-	}
-	return open, closed, nil
 }
 
 // FileContent fetches the raw bytes of a single file in the repository using

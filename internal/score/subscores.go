@@ -68,20 +68,23 @@ func releaseCadence(raw RawMetrics) SubScore {
 	}
 }
 
-// issueCloseRatio scores closed/(open+closed) issues. No issues -> 50.
+// issueCloseRatio scores closed/(closed+open) non-PR issues created in the
+// last 90 days. No in-cohort issues -> 50 (neutral/no-data).
 func issueCloseRatio(raw RawMetrics) SubScore {
-	total := raw.OpenIssues + raw.ClosedIssues
-	return ratioScore(raw.ClosedIssues, total, "issue_close_ratio", "Issue close ratio",
-		"closed / (open+closed) × 100",
-		fmt.Sprintf("%d/%d issues closed", raw.ClosedIssues, total))
+	total := raw.RecentIssuesClosed + raw.RecentIssuesOpen
+	return ratioScore(raw.RecentIssuesClosed, total, "issue_close_ratio", "Issue close ratio",
+		"closed / (closed+open), 90d cohort",
+		fmt.Sprintf("%d/%d issues closed (90d)", raw.RecentIssuesClosed, total))
 }
 
-// prBacklog scores merged/(merged+open) PRs. No PRs -> 50.
+// prBacklog scores merged/(merged+open) PRs created in the last 90 days.
+// Closed-unmerged PRs are excluded from both numerator and denominator.
+// No in-cohort PRs -> 50 (neutral/no-data).
 func prBacklog(raw RawMetrics) SubScore {
-	total := raw.MergedPRs + raw.OpenPRs
-	return ratioScore(raw.MergedPRs, total, "pr_backlog", "PR backlog",
-		"merged / (merged+open) × 100",
-		fmt.Sprintf("%d merged / %d open", raw.MergedPRs, raw.OpenPRs))
+	total := raw.RecentPRsMerged + raw.RecentPRsOpen
+	return ratioScore(raw.RecentPRsMerged, total, "pr_backlog", "PR backlog",
+		"merged / (merged+open), 90d cohort",
+		fmt.Sprintf("%d merged / %d open (90d)", raw.RecentPRsMerged, raw.RecentPRsOpen))
 }
 
 // --- Community / Governance -------------------------------------------------

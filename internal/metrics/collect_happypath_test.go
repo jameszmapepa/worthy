@@ -76,36 +76,17 @@ func TestCollect_HappyPath(t *testing.T) {
 			w.WriteHeader(http.StatusOK)
 			_, _ = fmt.Fprint(w, releaseYAML)
 
-		// RecentPulls — closed page for newcomer analysis (per_page=100 checked BEFORE per_page=1 to avoid substring match)
-		case path == "/repos/acme/widget/pulls" && r.URL.Query().Get("state") == "closed" && r.URL.Query().Get("per_page") == "100":
+		// RecentPulls — closed page for newcomer analysis (sort=updated)
+		case path == "/repos/acme/widget/pulls" && r.URL.Query().Get("state") == "closed" && r.URL.Query().Get("sort") == "updated":
 			w.WriteHeader(http.StatusOK)
 			_, _ = fmt.Fprint(w, closedPRsBody)
 
-		// CountByState — issues open (per_page=1 with Link header)
-		case path == "/repos/acme/widget/issues" && r.URL.Query().Get("state") == "open" && r.URL.Query().Get("per_page") == "1":
-			w.Header().Set("Link", `<https://api.github.com/repos/acme/widget/issues?page=40>; rel="last"`)
+		// RecentPullsByCreation — 90-day cohort (state=all, sort=created)
+		case path == "/repos/acme/widget/pulls" && r.URL.Query().Get("state") == "all" && r.URL.Query().Get("sort") == "created":
 			w.WriteHeader(http.StatusOK)
-			_, _ = fmt.Fprint(w, openIssuesLinkJSON)
+			_, _ = fmt.Fprint(w, closedPRsBody) // reuse same fixture; PR1 merged, PR2 closed-unmerged (excluded), PR3 merged, PR4 merged
 
-		// CountByState — issues closed (per_page=1 with Link header)
-		case path == "/repos/acme/widget/issues" && r.URL.Query().Get("state") == "closed" && r.URL.Query().Get("per_page") == "1":
-			w.Header().Set("Link", `<https://api.github.com/repos/acme/widget/issues?page=80>; rel="last"`)
-			w.WriteHeader(http.StatusOK)
-			_, _ = fmt.Fprint(w, closedIssuesLinkJSON)
-
-		// CountByState — pulls open
-		case path == "/repos/acme/widget/pulls" && r.URL.Query().Get("state") == "open" && r.URL.Query().Get("per_page") == "1":
-			w.Header().Set("Link", `<https://api.github.com/repos/acme/widget/pulls?page=12>; rel="last"`)
-			w.WriteHeader(http.StatusOK)
-			_, _ = fmt.Fprint(w, openPRsLinkJSON)
-
-		// CountByState — pulls closed
-		case path == "/repos/acme/widget/pulls" && r.URL.Query().Get("state") == "closed" && r.URL.Query().Get("per_page") == "1":
-			w.Header().Set("Link", `<https://api.github.com/repos/acme/widget/pulls?page=25>; rel="last"`)
-			w.WriteHeader(http.StatusOK)
-			_, _ = fmt.Fprint(w, closedPRsLinkJSON)
-
-		// RecentIssues — all, for TTFR sampling
+		// RecentIssues — all, for TTFR sampling and issue cohort
 		case path == "/repos/acme/widget/issues" && r.URL.Query().Get("state") == "all" && r.URL.Query().Get("per_page") == "100":
 			w.WriteHeader(http.StatusOK)
 			_, _ = fmt.Fprint(w, recentIssuesBody)
@@ -217,23 +198,35 @@ func TestCollect_HappyPath(t *testing.T) {
 		t.Error("UsesPullRequestTarget should be true (release.yml uses it)")
 	}
 
-	// --- Issue counts (excluding PRs) ---
-	// open issues link=40, open PRs=12 → OpenIssues = 40-12 = 28.
-	if got.OpenIssues != 28 {
-		t.Errorf("OpenIssues = %d; want 28", got.OpenIssues)
-	}
-
-	// --- PR outcome split ---
-	if got.OpenPRs != 12 {
-		t.Errorf("OpenPRs = %d; want 12", got.OpenPRs)
-	}
+	// --- PR outcome split (all-time, from closed PRs page) ---
 	// Closed PRs page: PR1 merged, PR2 closed-unmerged, PR3 merged, PR4 merged.
-	// MergedPRs = PRs where IsMerged()==true from sample = 3; ClosedUnmergedPRs = 1.
+	// MergedPRs = 3; ClosedUnmergedPRs = 1.
 	if got.MergedPRs != 3 {
 		t.Errorf("MergedPRs = %d; want 3", got.MergedPRs)
 	}
 	if got.ClosedUnmergedPRs != 1 {
 		t.Errorf("ClosedUnmergedPRs = %d; want 1", got.ClosedUnmergedPRs)
+	}
+
+	// --- 90-day issue creation cohort ---
+	// recentIssuesBody: issue 10 is a PR (filtered), issue 11+12 are open within 90d.
+	// RecentIssuesClosed=0, RecentIssuesOpen=2.
+	if got.RecentIssuesClosed != 0 {
+		t.Errorf("RecentIssuesClosed = %d; want 0", got.RecentIssuesClosed)
+	}
+	if got.RecentIssuesOpen != 2 {
+		t.Errorf("RecentIssuesOpen = %d; want 2", got.RecentIssuesOpen)
+	}
+
+	// --- 90-day PR creation cohort ---
+	// closedPRsBody reused: PR1 merged (30d ago, in window), PR2 closed-unmerged (excluded),
+	// PR3 merged (30d ago, in window), PR4 merged (200d ago, outside window).
+	// RecentPRsMerged=2, RecentPRsOpen=0.
+	if got.RecentPRsMerged != 2 {
+		t.Errorf("RecentPRsMerged = %d; want 2", got.RecentPRsMerged)
+	}
+	if got.RecentPRsOpen != 0 {
+		t.Errorf("RecentPRsOpen = %d; want 0", got.RecentPRsOpen)
 	}
 
 	// --- Newcomer PRs ---

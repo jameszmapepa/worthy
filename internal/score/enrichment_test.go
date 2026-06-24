@@ -14,8 +14,8 @@ func TestSubScoreFormula(t *testing.T) {
 		"commit_frequency":     "min(100, median12/15 × 100)",
 		"commit_recency":       "max(0, 100 − days/365 × 100)",
 		"release_cadence":      "0 releases → 40; else linear 90→730d",
-		"issue_close_ratio":    "closed / (open+closed) × 100",
-		"pr_backlog":           "merged / (merged+open) × 100",
+		"issue_close_ratio":    "closed / (closed+open), 90d cohort",
+		"pr_backlog":           "merged / (merged+open), 90d cohort",
 		"issue_responsiveness": "≤24h→100; ≤168h→100..60; ≤720h→60..0; else 0",
 		"pr_acceptance":        "merged / (merged+rejected) × 100",
 		"newcomer_merge_rate":  "merged / (merged+rejected) × 100",
@@ -155,8 +155,8 @@ func TestGateHowToClearContent(t *testing.T) {
 				r := healthyRaw()
 				r.DaysSinceLastPush = 400
 				r.RepoAgeDays = 2000
-				r.OpenIssues = 10
-				r.ClosedIssues = 90 // close ratio 90 >= 70
+				r.RecentIssuesClosed = 90 // cohort close ratio 90/(90+10) = 90 >= 70
+				r.RecentIssuesOpen = 10
 				r.ReleaseCount = 5
 				r.Archived = false
 				return r

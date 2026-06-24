@@ -120,11 +120,12 @@ func TestStaleNonTrigger(t *testing.T) {
 func TestStalePhaseDowngrade(t *testing.T) {
 	// RepoAgeDays>365 AND issue_close_ratio>=70 AND ReleaseCount>0 AND not archived
 	// AND stale -> downgrade to info, no cap.
+	// The gate now uses the 90-day cohort close ratio from RecentIssuesClosed/Open.
 	raw := healthyRaw()
 	raw.DaysSinceLastPush = 400 // would be stale
 	raw.RepoAgeDays = 2000
-	raw.OpenIssues = 10
-	raw.ClosedIssues = 90 // close ratio 90 >= 70
+	raw.RecentIssuesClosed = 90 // cohort close ratio 90/(90+10)=90 >= 70
+	raw.RecentIssuesOpen = 10
 	raw.ReleaseCount = 5
 	raw.Archived = false
 
@@ -145,8 +146,8 @@ func TestPhaseDowngradeDoesNotApplyToArchived(t *testing.T) {
 	raw := healthyRaw()
 	raw.Archived = true
 	raw.RepoAgeDays = 2000
-	raw.OpenIssues = 10
-	raw.ClosedIssues = 90
+	raw.RecentIssuesClosed = 90
+	raw.RecentIssuesOpen = 10
 	raw.ReleaseCount = 5
 	g, _ := gateByKey(Evaluate(raw), "stale_or_archived")
 	if g.Severity != SeverityCritical {

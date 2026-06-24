@@ -50,14 +50,6 @@ type workflowResult struct {
 	partial string
 }
 
-type countResult struct {
-	openIssues   int
-	closedIssues int
-	openPRs      int
-	closedPRs    int
-	partial      []string
-}
-
 type closedPullsResult struct {
 	merged           int
 	unmerged         int
@@ -67,8 +59,16 @@ type closedPullsResult struct {
 }
 
 type ttfrResult struct {
-	median  float64
-	partial string
+	median             float64
+	recentIssuesClosed int
+	recentIssuesOpen   int
+	partial            string
+}
+
+type prCohortResult struct {
+	recentPRsMerged int
+	recentPRsOpen   int
+	partial         string
 }
 
 // withCall acquires one semaphore slot, runs fn, then releases the slot. It
@@ -193,61 +193,6 @@ func collectWorkflows(gctx context.Context, c *github.Client, owner, repo string
 	return nil
 }
 
-// collectCounts fetches open/closed issue counts and PR counts under the shared
-// semaphore. Each sub-call records its own canonical partial marker on
-// non-context failure; a context error aborts the whole collection.
-func collectCounts(gctx context.Context, c *github.Client, owner, repo string, sem *semaphore.Weighted, out *countResult) error {
-	openIssues, err := countOne(gctx, sem, func() (int, error) {
-		return c.CountByState(gctx, owner, repo, "issues", "open")
-	})
-	if isContextError(err) {
-		return err
-	}
-	if err != nil {
-		out.partial = append(out.partial, "issue_count_open")
-	}
-	out.openIssues = openIssues
-
-	closedIssues, err := countOne(gctx, sem, func() (int, error) {
-		return c.CountByState(gctx, owner, repo, "issues", "closed")
-	})
-	if isContextError(err) {
-		return err
-	}
-	if err != nil {
-		out.partial = append(out.partial, "issue_count_closed")
-	}
-	out.closedIssues = closedIssues
-
-	var openPRs, closedPRs int
-	err = withCall(gctx, sem, func() error {
-		var e error
-		openPRs, closedPRs, e = c.PullRequestCounts(gctx, owner, repo)
-		return e
-	})
-	if isContextError(err) {
-		return err
-	}
-	if err != nil {
-		out.partial = append(out.partial, "pr_counts")
-	}
-	out.openPRs = openPRs
-	out.closedPRs = closedPRs
-	return nil
-}
-
-// countOne runs a single count call under the semaphore, returning its value
-// and error (so the caller can classify context vs degradation).
-func countOne(gctx context.Context, sem *semaphore.Weighted, fn func() (int, error)) (int, error) {
-	var n int
-	err := withCall(gctx, sem, func() error {
-		var e error
-		n, e = fn()
-		return e
-	})
-	return n, err
-}
-
 func collectClosedPulls(gctx context.Context, c *github.Client, owner, repo string, sem *semaphore.Weighted, now time.Time, out *closedPullsResult) error {
 	var pulls []github.PullRequest
 	err := withCall(gctx, sem, func() error {
@@ -266,7 +211,7 @@ func collectClosedPulls(gctx context.Context, c *github.Client, owner, repo stri
 	return nil
 }
 
-func collectTTFR(gctx context.Context, c *github.Client, owner, repo string, sem *semaphore.Weighted, out *ttfrResult) error {
+func collectTTFR(gctx context.Context, c *github.Client, owner, repo string, sem *semaphore.Weighted, now time.Time, out *ttfrResult) error {
 	var issues []github.Issue
 	err := withCall(gctx, sem, func() error {
 		is, e := c.RecentIssues(gctx, owner, repo, "all")
@@ -285,5 +230,71 @@ func collectTTFR(gctx context.Context, c *github.Client, owner, repo string, sem
 		return err // context error only
 	}
 	out.median = median
+	// Derive the 90-day issue creation cohort from the same slice — no extra
+	// API call. If this fetch failed we stay at zero (neutral via ratioScore).
+	out.recentIssuesClosed, out.recentIssuesOpen = issueCreationCohort(issues, now)
 	return nil
+}
+
+// collectPRCohort fetches all-state PRs sorted by creation date and counts
+// the 90-day creation cohort: merged (MergedAt!=nil) and open (State=="open").
+// Closed-unmerged PRs are excluded from both numerator and denominator.
+// On any non-context error the partial marker "pr_cohort" is recorded and
+// counts stay 0, yielding a neutral 50 via ratioScore.
+func collectPRCohort(gctx context.Context, c *github.Client, owner, repo string, sem *semaphore.Weighted, now time.Time, out *prCohortResult) error {
+	var prs []github.PullRequest
+	err := withCall(gctx, sem, func() error {
+		p, e := c.RecentPullsByCreation(gctx, owner, repo)
+		prs = p
+		return e
+	})
+	if err != nil {
+		if isContextError(err) {
+			return err
+		}
+		out.partial = "pr_cohort"
+		return nil
+	}
+	out.recentPRsMerged, out.recentPRsOpen = prCreationCohort(prs, now)
+	return nil
+}
+
+// issueCreationCohort counts non-PR issues created within the newcomerWindow
+// as closed or open. Issues outside the window are ignored.
+func issueCreationCohort(issues []github.Issue, now time.Time) (closed, open int) {
+	windowStart := now.Add(-newcomerWindow)
+	for _, iss := range issues {
+		if iss.IsPullRequest() {
+			continue
+		}
+		if iss.CreatedAt.Before(windowStart) {
+			continue
+		}
+		if iss.State == "closed" {
+			closed++
+		} else {
+			open++
+		}
+	}
+	return closed, open
+}
+
+// prCreationCohort counts PRs created within the newcomerWindow as merged or
+// open. Closed-unmerged PRs are excluded (they are irrelevant to the backlog
+// health signal).
+func prCreationCohort(prs []github.PullRequest, now time.Time) (merged, open int) {
+	windowStart := now.Add(-newcomerWindow)
+	for _, pr := range prs {
+		if pr.CreatedAt.Before(windowStart) {
+			continue
+		}
+		switch {
+		case pr.MergedAt != nil:
+			merged++
+		case pr.State == "open":
+			open++
+			// closed-unmerged: excluded from cohort
+		}
+	}
+	return merged, open
 }
