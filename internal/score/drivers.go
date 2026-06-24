@@ -9,7 +9,7 @@ const driversN = 3
 // up to driversN each, ordered best-first and worst-first respectively. It is
 // pure and deterministic: ties keep category/sub-score order (stable sort).
 //
-// ceiling: with 14 sub-scores and driversN=3, value-distinct sets never
+// ceiling: with 15 sub-scores and driversN=3, value-distinct sets never
 // overlap; all-equal ties can produce identical strong and weak sets. If
 // driversN ever exceeds half the sub-score count, also dedupe distinct-value
 // overlap.

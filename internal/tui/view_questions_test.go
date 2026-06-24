@@ -220,9 +220,9 @@ func TestQuestionsSelectionResetsOnViewSwitch(t *testing.T) {
 	}
 }
 
-func TestAllFourteenIndicatorsSelectableWithRealScorer(t *testing.T) {
-	// The real scorer produces 14 sub-scores (Activity:5, Community:5, Security:4).
-	// All 14 must be reachable via navigation on the questions view, which includes
+func TestAllFifteenIndicatorsSelectableWithRealScorer(t *testing.T) {
+	// The real scorer produces 15 sub-scores (Activity:6, Community:5, Security:4).
+	// All 15 must be reachable via navigation on the questions view, which includes
 	// the integrity section. This test uses score.Evaluate so the invariant is
 	// checked against production output, not the hand-built 7-item fixedReport.
 
@@ -238,8 +238,8 @@ func TestAllFourteenIndicatorsSelectableWithRealScorer(t *testing.T) {
 	}
 	total += len(integrity)
 
-	if total != 14 {
-		t.Fatalf("expected 14 selectable indicators, got %d (activity=%d community=%d security=%d)",
+	if total != 15 {
+		t.Fatalf("expected 15 selectable indicators, got %d (activity=%d community=%d security=%d)",
 			total,
 			func() int {
 				for _, g := range groups {
@@ -261,7 +261,7 @@ func TestAllFourteenIndicatorsSelectableWithRealScorer(t *testing.T) {
 		)
 	}
 
-	// Act + Assert: clamp from over-scroll must land at index 13 (0-based).
+	// Act + Assert: clamp from over-scroll must land at index 14 (0-based).
 	// We build a model, switch to questions view, and hammer j 20 times.
 	m := Model{}
 	updated, _ := m.Update(resultMsg{report: r, raw: fixedRaw()})
@@ -270,12 +270,12 @@ func TestAllFourteenIndicatorsSelectableWithRealScorer(t *testing.T) {
 	for range 20 {
 		m = press(m, "j")
 	}
-	if m.selected != 13 {
-		t.Errorf("all-14 clamp: selected=%d, want 13 (max indicator index)", m.selected)
+	if m.selected != 14 {
+		t.Errorf("all-15 clamp: selected=%d, want 14 (max indicator index)", m.selected)
 	}
 
-	// Assert every index 0..13 is rendered by the view without panic.
-	for i := range 14 {
+	// Assert every index 0..14 is rendered by the view without panic.
+	for i := range 15 {
 		out := renderQuestions(r, 100, i, false)
 		if !strings.Contains(out, "▸") {
 			t.Errorf("index %d: selection marker missing from rendered output", i)

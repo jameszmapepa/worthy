@@ -87,6 +87,43 @@ func prBacklog(raw RawMetrics) SubScore {
 		fmt.Sprintf("%d merged / %d open (90d)", raw.RecentPRsMerged, raw.RecentPRsOpen))
 }
 
+// busFactor scores how distributed recent authorship is, as a continuous
+// companion to the bus_factor GATE (which fires only at the extreme:
+// share > 0.80 AND count <= 2). The sub-score gives a graded signal across the
+// danger zone the gate misses (e.g. 0.75 share with 3 contributors). It blends
+// concentration — how little the top author dominates, (1−share) scaled so a
+// top share at/under 0.40 earns full marks — at 0.6 with pool size — the
+// contributor count scaled so 5+ earns full marks — at 0.4.
+//
+// No contributor data (ContributorCount == 0, e.g. commit-activity stats
+// unavailable) scores a neutral 50 rather than 0.
+//
+// ceiling: a proxy over the two metrics we collect (top-1 share + count). The
+// exact CHAOSS bus factor (smallest N making 50% of contributions) needs the
+// full per-contributor distribution, which we do not fetch.
+func busFactor(raw RawMetrics) SubScore {
+	const formula = "0.6·concentration + 0.4·pool; no data → 50"
+	if raw.ContributorCount == 0 {
+		return SubScore{
+			Key:     "bus_factor",
+			Label:   "Bus factor",
+			Value:   50,
+			Formula: formula,
+			Raw:     "no contributor data",
+		}
+	}
+	concentration := clamp((1-raw.TopContributorRecentShare)/0.6*100, 0, 100)
+	pool := clamp(float64(raw.ContributorCount-1)/4*100, 0, 100)
+	return SubScore{
+		Key:     "bus_factor",
+		Label:   "Bus factor",
+		Value:   0.6*concentration + 0.4*pool,
+		Formula: formula,
+		Raw: fmt.Sprintf("top author %.0f%% of commits, %d contributors",
+			raw.TopContributorRecentShare*100, raw.ContributorCount),
+	}
+}
+
 // --- Community / Governance -------------------------------------------------
 
 // issueResponsiveness scores the bot-filtered median time-to-first-response.
@@ -140,26 +177,25 @@ func newcomerMergeRate(raw RawMetrics) SubScore {
 }
 
 // governanceDocs scores weighted presence of governance docs:
-// README .25, CONTRIBUTING .25, CODE_OF_CONDUCT .2, LICENSE .3, *100.
+// README .40, CONTRIBUTING .35, CODE_OF_CONDUCT .25, *100. LICENSE is
+// deliberately excluded — it is scored by the standalone `license` sub-score, so
+// counting it here too would double-count license presence within Community.
 func governanceDocs(raw RawMetrics) SubScore {
 	var v float64
 	if raw.HasReadme {
-		v += 0.25
+		v += 0.40
 	}
 	if raw.HasContributing {
-		v += 0.25
+		v += 0.35
 	}
 	if raw.HasCodeOfConduct {
-		v += 0.20
-	}
-	if raw.HasLicense {
-		v += 0.30
+		v += 0.25
 	}
 	return SubScore{
 		Key:     "governance_docs",
 		Label:   "Governance docs",
 		Value:   v * 100,
-		Formula: "README·.25 + CONTRIB·.25 + CoC·.2 + LICENSE·.3",
+		Formula: "README·.4 + CONTRIB·.35 + CoC·.25",
 		Raw:     fmt.Sprintf("%d%% docs present", raw.HealthPercentage),
 	}
 }

@@ -69,16 +69,73 @@ func TestCompositeRoundedOneDecimal(t *testing.T) {
 	}
 }
 
-func TestCategoryIsEqualWeightedAverage(t *testing.T) {
+func TestCategoryIsWeightedAverageOfSubs(t *testing.T) {
 	r := Evaluate(healthyRaw())
 	for _, c := range r.Categories {
-		var sum float64
+		var sum, wsum float64
 		for _, s := range c.Subs {
-			sum += s.Value
+			sum += s.Value * s.Weight
+			wsum += s.Weight
 		}
-		mean := sum / float64(len(c.Subs))
-		approx(t, c.Value, mean, "category "+c.Key+" mean")
+		approx(t, wsum, 1.0, "category "+c.Key+" sub-weights sum to 1")
+		approx(t, c.Value, sum/wsum, "category "+c.Key+" weighted average")
 	}
+}
+
+// TestActivityAndSecurityAreEqualWeighted asserts the two categories that keep
+// equal within-category weights still do; Community is intentionally weighted.
+func TestActivityAndSecurityAreEqualWeighted(t *testing.T) {
+	r := Evaluate(healthyRaw())
+	for _, c := range r.Categories {
+		if c.Key == CategoryCommunity {
+			continue
+		}
+		want := 1.0 / float64(len(c.Subs))
+		for _, s := range c.Subs {
+			approx(t, s.Weight, want, "category "+c.Key+" sub "+s.Key+" weight")
+		}
+	}
+}
+
+// TestCommunityWeights pins the per-sub Community weights: the most direct
+// contribution signals (newcomer_merge_rate, issue_responsiveness) lead, and the
+// presence-boolean docs/license indicators are down-weighted (finding #4).
+func TestCommunityWeights(t *testing.T) {
+	r := Evaluate(healthyRaw())
+	var com CategoryScore
+	for _, c := range r.Categories {
+		if c.Key == CategoryCommunity {
+			com = c
+		}
+	}
+	want := map[string]float64{
+		"newcomer_merge_rate":  0.30,
+		"issue_responsiveness": 0.25,
+		"pr_acceptance":        0.20,
+		"governance_docs":      0.15,
+		"license":              0.10,
+	}
+	for _, s := range com.Subs {
+		approx(t, s.Weight, want[s.Key], "community sub "+s.Key+" weight")
+	}
+}
+
+// TestBusFactorSubScoreFillsGateBlindSpot proves finding #3's rationale: a
+// fragile 0.75-share / 3-contributor repo does NOT trip the bus_factor gate
+// (which needs share>0.80 AND count<=2), yet its bus_factor sub-score is
+// depressed to 45 — so the risk the gate misses is no longer invisible.
+func TestBusFactorSubScoreFillsGateBlindSpot(t *testing.T) {
+	raw := healthyRaw()
+	raw.TopContributorRecentShare = 0.75
+	raw.ContributorCount = 3
+	r := Evaluate(raw)
+
+	for _, g := range r.Gates {
+		if g.Key == "bus_factor" {
+			t.Fatalf("bus_factor gate should not fire at share 0.75 / count 3")
+		}
+	}
+	approx(t, findSub(t, r, "bus_factor").Value, 45, "bus_factor sub-score in gate blind spot")
 }
 
 func TestLetterGrade(t *testing.T) {
