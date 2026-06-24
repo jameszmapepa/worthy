@@ -40,7 +40,7 @@ func healthyRaw() RawMetrics {
 func TestCategoryWeightsAndComposite(t *testing.T) {
 	r := Evaluate(healthyRaw())
 
-	// Activity 0.40, Community 0.30, Security 0.30.
+	// Activity 0.45, Community 0.45, Security 0.10.
 	var act, com, sec CategoryScore
 	for _, c := range r.Categories {
 		switch c.Key {
@@ -52,11 +52,11 @@ func TestCategoryWeightsAndComposite(t *testing.T) {
 			sec = c
 		}
 	}
-	approx(t, act.Weight, 0.40, "activity weight")
-	approx(t, com.Weight, 0.30, "community weight")
-	approx(t, sec.Weight, 0.30, "security weight")
+	approx(t, act.Weight, 0.45, "activity weight")
+	approx(t, com.Weight, 0.45, "community weight")
+	approx(t, sec.Weight, 0.10, "security weight")
 
-	want := 0.40*act.Value + 0.30*com.Value + 0.30*sec.Value
+	want := 0.45*act.Value + 0.45*com.Value + 0.10*sec.Value
 	// Composite is rounded to one decimal.
 	approx(t, r.Composite, round1(want), "raw composite")
 }

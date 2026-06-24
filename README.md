@@ -29,13 +29,13 @@ Scorecard, and empirical open-source-survival research.
 
 ## The scoring model
 
-**Composite = 40% Activity + 30% Community/Governance + 30% Security/Integrity.**
+**Composite = 45% Activity + 45% Community/Governance + 10% Security/Integrity.**
 
 | Category | Indicators |
 |---|---|
-| **Activity** (40%) | commit frequency, commit recency, release cadence, issue close-ratio, PR backlog |
-| **Community** (30%) | issue first-response time (bot-filtered), PR acceptance, **newcomer merge rate**, governance docs, license |
-| **Security** (30%) | CI present, signed releases, security policy, workflow `pull_request_target` safety |
+| **Activity** (45%) | commit frequency, commit recency, release cadence, issue close-ratio, PR backlog |
+| **Community** (45%) | issue first-response time (bot-filtered), PR acceptance, **newcomer merge rate**, governance docs, license |
+| **Security** (10%) | CI present, signed releases, security policy, workflow `pull_request_target` safety |
 
 Letter grade (A/B/C/D/F) is applied to the **gate-adjusted** composite.
 
@@ -100,10 +100,11 @@ The TUI opens on the scorecard. Switch views and interact with:
 - **Scorecard** — composite + grade, per-indicator color-coded bars, and the
   triggered gates. Select any indicator and drill in to see its formula, raw
   metric, weight, contribution to its category, and the gates it feeds.
-- **Questions** — every indicator grouped under the two questions a contributor
-  actually asks — "Will it last?" (active maintenance) and "Will my PR land?"
-  (newcomer experience) — as best-to-worst bars under a per-question verdict.
-  Select an indicator to drill into the same detail (formula, raw, weight, gates).
+- **Questions** — the two questions a contributor asks — "Will it last?"
+  (Activity) and "Will my PR land?" (Community) — as best-to-worst bars under a
+  per-question verdict, plus a separate "Supply-chain integrity" section for the
+  Security indicators. Select any indicator to drill into its formula, raw metric,
+  weight, and gates.
 - **Gauges** — category gauges plus a sparkline of the 52-week commit trend.
   Select a category to break it down into its constituent indicators.
 - **Explain** — a plain-language verdict, the strongest and weakest indicators,
