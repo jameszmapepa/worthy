@@ -60,9 +60,10 @@ All time-based metrics computed relative to an injected `now time.Time` (never
 | `CommitsLast52Weeks []int` | weekly commit counts | `/stats/commit_activity` |
 | `DaysSinceLastPush int` | recency | repo `pushed_at` |
 | `RepoAgeDays int` | first-commit proxy | repo `created_at` |
-| `OpenIssues, ClosedIssues int` | counts (exclude PRs) | `/issues` Link-count, minus PRs |
-| `OpenPRs, MergedPRs, ClosedUnmergedPRs int` | PR outcome split | `/pulls` Link-count + sampled page |
-| `MedianIssueFirstResponseHours float64` | bot-filtered TTFR | `/issues` + `/issues/{n}/comments` |
+| `MergedPRs, ClosedUnmergedPRs int` | all-time PR outcome split (used by `pr_acceptance`) | `/pulls?state=closed&sort=updated` |
+| `RecentIssuesClosed, RecentIssuesOpen int` | non-PR issues created in last 90d, closed vs open (zero = neutral no-data) | reused from same `/issues?state=all&sort=created` fetch as TTFR — no extra call |
+| `RecentPRsMerged, RecentPRsOpen int` | PRs created in last 90d, merged vs open; closed-unmerged excluded (zero = neutral no-data) | `/pulls?state=all&sort=created&direction=desc` (new call, net -3 calls vs prior design: 4 CountByState removed, 1 added) |
+| `MedianIssueFirstResponseHours float64` | bot-filtered TTFR | `/issues?state=all&sort=created` + `/issues/{n}/comments` |
 | `NewcomerPRsMerged, NewcomerPRsClosedUnmerged int` | author_association in {FIRST_TIME_CONTRIBUTOR, NONE, CONTRIBUTOR}, last ~90d, self-merge excluded | `/pulls?state=closed` |
 | `TopContributorRecentShare float64` | top login's fraction of last-12-week commits (0..1) | `/stats/contributors` |
 | `ContributorCount int` | contributors with >0 recent commits | `/stats/contributors` |
@@ -108,8 +109,8 @@ Formula string, Weight, Gates []string }`.
   `max(0, 100 - DaysSinceLastPush/365*100)`.
 - `release_cadence`: `ReleaseCount==0` -> 40 (neutral-low). Else by
   `DaysSinceLastRelease`: <=90d ->100, >=730d ->0, linear.
-- `issue_close_ratio`: `ClosedIssues/(OpenIssues+ClosedIssues)*100`; zero issues -> 50.
-- `pr_backlog`: `MergedPRs/(MergedPRs+OpenPRs)*100`; no PRs -> 50.
+- `issue_close_ratio`: `RecentIssuesClosed/(RecentIssuesClosed+RecentIssuesOpen)*100`; 90-day creation cohort (non-PR issues with `CreatedAt >= now-90d`); zero in-cohort issues → 50 (neutral).
+- `pr_backlog`: `RecentPRsMerged/(RecentPRsMerged+RecentPRsOpen)*100`; 90-day creation cohort (PRs with `CreatedAt >= now-90d`); closed-unmerged excluded; zero in-cohort PRs → 50 (neutral).
 
 **Community/Governance category (weight 0.45):**
 - `issue_responsiveness`: from `MedianIssueFirstResponseHours`. <=24h ->100;

@@ -104,18 +104,20 @@ func TestReleaseCadence(t *testing.T) {
 
 func TestIssueCloseRatio(t *testing.T) {
 	tests := []struct {
-		name        string
-		open, close int
-		want        float64
+		name         string
+		closed, open int
+		want         float64
 	}{
-		{"no issues -> 50", 0, 0, 50},
-		{"all closed -> 100", 0, 10, 100},
-		{"all open -> 0", 10, 0, 0},
+		{"no issues -> 50 (neutral)", 0, 0, 50},
+		{"all closed -> 100", 10, 0, 100},
+		{"all open -> 0", 0, 10, 0},
 		{"half -> 50", 5, 5, 50},
+		// Cohort-specific: realistic 90d numbers.
+		{"8 closed / 2 open -> 80", 8, 2, 80},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got := issueCloseRatio(RawMetrics{OpenIssues: tc.open, ClosedIssues: tc.close})
+			got := issueCloseRatio(RawMetrics{RecentIssuesClosed: tc.closed, RecentIssuesOpen: tc.open})
 			approx(t, got.Value, tc.want, "issue_close_ratio")
 		})
 	}
@@ -127,14 +129,16 @@ func TestPRBacklog(t *testing.T) {
 		merged, open int
 		want         float64
 	}{
-		{"no PRs -> 50", 0, 0, 50},
+		{"no PRs -> 50 (neutral)", 0, 0, 50},
 		{"all merged -> 100", 10, 0, 100},
 		{"all open -> 0", 0, 10, 0},
 		{"half -> 50", 5, 5, 50},
+		// Cohort-specific: realistic 90d numbers.
+		{"6 merged / 4 open -> 60", 6, 4, 60},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got := prBacklog(RawMetrics{MergedPRs: tc.merged, OpenPRs: tc.open})
+			got := prBacklog(RawMetrics{RecentPRsMerged: tc.merged, RecentPRsOpen: tc.open})
 			approx(t, got.Value, tc.want, "pr_backlog")
 		})
 	}

@@ -295,99 +295,6 @@ func TestGet_403MissingRateLimitHeaderIsGenericError(t *testing.T) {
 }
 
 // -------------------------------------------------------------------------
-// Link-header count: lastPageCount + CountByState integration
-// -------------------------------------------------------------------------
-
-func TestLastPageCount_WithLinkHeader(t *testing.T) {
-	tests := []struct {
-		name      string
-		linkHdr   string
-		wantN     int
-		wantFound bool
-	}{
-		{
-			name:      "standard rel=last with page=42",
-			linkHdr:   `<https://api.github.com/repos/o/r/issues?page=42>; rel="last"`,
-			wantN:     42,
-			wantFound: true,
-		},
-		{
-			name:      "multi-part link header",
-			linkHdr:   `<https://api.github.com/repos/o/r/issues?page=2>; rel="next", <https://api.github.com/repos/o/r/issues?page=7>; rel="last"`,
-			wantN:     7,
-			wantFound: true,
-		},
-		{
-			name:      "no link header returns false",
-			linkHdr:   "",
-			wantN:     0,
-			wantFound: false,
-		},
-		{
-			name:      "link header with no rel=last",
-			linkHdr:   `<https://api.github.com/repos/o/r/issues?page=3>; rel="next"`,
-			wantN:     0,
-			wantFound: false,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			h := make(http.Header)
-			if tt.linkHdr != "" {
-				h.Set("Link", tt.linkHdr)
-			}
-			n, found := lastPageCount(h)
-			if found != tt.wantFound {
-				t.Errorf("found = %v; want %v", found, tt.wantFound)
-			}
-			if n != tt.wantN {
-				t.Errorf("n = %d; want %d", n, tt.wantN)
-			}
-		})
-	}
-}
-
-func TestCountByState_UsesLinkHeader(t *testing.T) {
-	// Server responds with Link header indicating page=42 as the last page.
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Link", `<https://api.github.com/repos/o/r/issues?page=42>; rel="last"`)
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`[{}]`)) // single item; Link header takes precedence
-	}))
-	defer srv.Close()
-
-	c := newTestClient(srv)
-	n, err := c.CountByState(context.Background(), "o", "r", "issues", "open")
-	if err != nil {
-		t.Fatalf("CountByState: %v", err)
-	}
-	if n != 42 {
-		t.Errorf("count = %d; want 42", n)
-	}
-}
-
-func TestCountByState_FallsBackToSliceLen(t *testing.T) {
-	// No Link header → falls back to len of returned JSON array.
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`[{},{}]`))
-	}))
-	defer srv.Close()
-
-	c := newTestClient(srv)
-	n, err := c.CountByState(context.Background(), "o", "r", "issues", "open")
-	if err != nil {
-		t.Fatalf("CountByState: %v", err)
-	}
-	if n != 2 {
-		t.Errorf("count = %d; want 2 (fallback to slice len)", n)
-	}
-}
-
-// -------------------------------------------------------------------------
 // Token / auth header behaviour
 // -------------------------------------------------------------------------
 
@@ -680,6 +587,53 @@ func TestRecentPulls_DecodeShape(t *testing.T) {
 	}
 }
 
+func TestRecentPullsByCreation_DecodeShape(t *testing.T) {
+	t1 := time.Now().Add(-10 * 24 * time.Hour).UTC().Truncate(time.Second)
+	body := fmt.Sprintf(`[
+		{"number":7,"state":"closed","created_at":%q,"closed_at":%q,
+		 "merged_at":%q,"user":{"login":"eve","type":"User"},
+		 "author_association":"CONTRIBUTOR","merged_by":{"login":"alice","type":"User"}},
+		{"number":8,"state":"open","created_at":%q,"closed_at":null,
+		 "merged_at":null,"user":{"login":"frank","type":"User"},
+		 "author_association":"NONE","merged_by":null}
+	]`, t1.Format(time.RFC3339), t1.Format(time.RFC3339), t1.Format(time.RFC3339), t1.Format(time.RFC3339))
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Verify the call uses state=all and sort=created (not sort=updated).
+		q := r.URL.Query()
+		if q.Get("state") != "all" {
+			http.Error(w, "want state=all", http.StatusBadRequest)
+			return
+		}
+		if q.Get("sort") != "created" {
+			http.Error(w, "want sort=created", http.StatusBadRequest)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = fmt.Fprint(w, body)
+	}))
+	defer srv.Close()
+
+	c := newTestClient(srv)
+	prs, err := c.RecentPullsByCreation(context.Background(), "acme", "widget")
+	if err != nil {
+		t.Fatalf("RecentPullsByCreation: %v", err)
+	}
+	if len(prs) != 2 {
+		t.Fatalf("len(prs) = %d; want 2", len(prs))
+	}
+	if !prs[0].IsMerged() {
+		t.Error("prs[0].IsMerged() = false; want true")
+	}
+	if prs[1].IsMerged() {
+		t.Error("prs[1].IsMerged() = true; want false")
+	}
+	if prs[1].State != "open" {
+		t.Errorf("prs[1].State = %q; want open", prs[1].State)
+	}
+}
+
 func TestRecentIssues_DecodeShape(t *testing.T) {
 	t1 := time.Now().Add(-24 * time.Hour).UTC().Truncate(time.Second)
 	body := fmt.Sprintf(`[
@@ -741,37 +695,6 @@ func TestIssueComments_DecodeShape(t *testing.T) {
 	}
 	if cs[1].User.Type != "Bot" {
 		t.Errorf("cs[1].User.Type = %q; want %q", cs[1].User.Type, "Bot")
-	}
-}
-
-func TestPullRequestCounts_TwoRequests(t *testing.T) {
-	// Two calls: open (page=5 as last) and closed (page=13 as last).
-	call := 0
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		call++
-		var page int
-		if call == 1 {
-			page = 5 // open
-		} else {
-			page = 13 // closed
-		}
-		w.Header().Set("Link", fmt.Sprintf(`<https://api.github.com/repos/o/r/pulls?page=%d>; rel="last"`, page))
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`[{}]`))
-	}))
-	defer srv.Close()
-
-	c := newTestClient(srv)
-	open, closed, err := c.PullRequestCounts(context.Background(), "acme", "widget")
-	if err != nil {
-		t.Fatalf("PullRequestCounts: %v", err)
-	}
-	if open != 5 {
-		t.Errorf("open = %d; want 5", open)
-	}
-	if closed != 13 {
-		t.Errorf("closed = %d; want 13", closed)
 	}
 }
 
@@ -967,41 +890,6 @@ func TestGet_LongBodyTruncatedInError(t *testing.T) {
 	}
 	if !contains(err.Error(), "...") {
 		t.Errorf("expected truncated body with '...' in error; got: %q", err.Error())
-	}
-}
-
-// -------------------------------------------------------------------------
-// PullRequestCounts — error on second call propagates
-// -------------------------------------------------------------------------
-
-func TestPullRequestCounts_ErrorOnClosedPropagates(t *testing.T) {
-	reset := time.Now().Add(time.Minute).Unix()
-	call := 0
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		call++
-		if call == 1 {
-			// First call (open) succeeds.
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusOK)
-			_, _ = w.Write([]byte(`[{}]`))
-			return
-		}
-		// Second call (closed) hits rate limit.
-		w.Header().Set("X-RateLimit-Remaining", "0")
-		w.Header().Set("X-RateLimit-Limit", "60")
-		w.Header().Set("X-RateLimit-Reset", strconv.FormatInt(reset, 10))
-		w.WriteHeader(http.StatusForbidden)
-	}))
-	defer srv.Close()
-
-	c := newTestClient(srv)
-	_, _, err := c.PullRequestCounts(context.Background(), "acme", "widget")
-	if err == nil {
-		t.Fatal("expected error when closed-count call fails")
-	}
-	var rle *RateLimitError
-	if !errors.As(err, &rle) {
-		t.Errorf("want *RateLimitError from second call; got %T: %v", err, err)
 	}
 }
 

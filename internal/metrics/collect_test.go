@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -353,12 +352,12 @@ func TestCollect_MultipleEndpoints500_AllDegrade(t *testing.T) {
 			"/repos/acme/widget/actions/workflows":
 			w.WriteHeader(http.StatusInternalServerError)
 			_, _ = w.Write([]byte(`{"message":"server error"}`))
-		// issues + pulls: CountByState (per_page=1) return empty; RecentIssues/RecentPulls OK.
+		// issues → OK (RecentIssues succeeds, issue cohort is computed).
 		case "/repos/acme/widget/issues":
 			w.WriteHeader(http.StatusOK)
 			_, _ = fmt.Fprint(w, `[]`)
+		// pulls → 500 for all calls: closed_pulls and pr_cohort both degrade.
 		case "/repos/acme/widget/pulls":
-			// per_page=1 → 500 (PR counts fail); per_page=100 (RecentPulls) → 500 (closed_pulls fail)
 			w.WriteHeader(http.StatusInternalServerError)
 			_, _ = w.Write([]byte(`{"message":"server error"}`))
 		default:
@@ -375,6 +374,7 @@ func TestCollect_MultipleEndpoints500_AllDegrade(t *testing.T) {
 	}
 	for _, want := range []string{
 		"contributor_stats", "commit_activity", "releases", "workflows",
+		"closed_pulls", "pr_cohort",
 	} {
 		if !containsStr(got.Partial, want) {
 			t.Errorf("Partial = %v; want to contain %q", got.Partial, want)
@@ -383,16 +383,13 @@ func TestCollect_MultipleEndpoints500_AllDegrade(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// collectCounts: context abort mid-counts propagates as an error
+// context abort mid-fanout propagates as an error
 // ---------------------------------------------------------------------------
 
-// TestCollect_CollectCounts_ContextAbort verifies the counts collector aborts
-// with a context error when cancellation fires. The original premise (a strict
-// workflows-then-counts ordering) no longer holds under concurrency, so this
-// uses the deterministic repo-triggered-cancel pattern: the repo gate succeeds
-// and cancels, and every fan-out endpoint blocks on the request context being
-// done, so all in-flight calls (counts included) abort with a context error.
-func TestCollect_CollectCounts_ContextAbort(t *testing.T) {
+// TestCollect_FanOut_ContextAbort verifies that context cancellation after the
+// repo gate causes all in-flight fan-out calls to abort and Collect to return
+// a context error. Uses the deterministic repo-triggered-cancel pattern.
+func TestCollect_FanOut_ContextAbort(t *testing.T) {
 	now, _ := time.Parse(time.RFC3339, "2026-06-22T00:00:00Z")
 
 	cancelCh := make(chan struct{})
@@ -430,12 +427,15 @@ func TestCollect_CollectCounts_ContextAbort(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// collectCounts error paths: each of the three sub-calls can degrade
+// pr_cohort graceful degradation: rate-limit on RecentPullsByCreation
 // ---------------------------------------------------------------------------
 
-func TestCollect_CountByState_OpenIssuesError_DegradesToPartial(t *testing.T) {
+// TestCollect_PRCohort_RateLimited_DegradesToPartial verifies that a
+// rate-limit (or any non-context error) on the RecentPullsByCreation call
+// records "pr_cohort" in Partial, leaves RecentPRsMerged/Open at zero
+// (yielding a neutral 50 via ratioScore), and does not abort collection.
+func TestCollect_PRCohort_RateLimited_DegradesToPartial(t *testing.T) {
 	now, _ := time.Parse(time.RFC3339, "2026-06-22T00:00:00Z")
-	reset := strconv.FormatInt(time.Now().Add(30*time.Minute).Unix(), 10)
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -459,72 +459,14 @@ func TestCollect_CountByState_OpenIssuesError_DegradesToPartial(t *testing.T) {
 			w.WriteHeader(http.StatusOK)
 			_, _ = fmt.Fprint(w, `{"total_count":0,"workflows":[]}`)
 		case "/repos/acme/widget/issues":
-			// per_page=1 (CountByState) → rate limit; per_page=100 (RecentIssues) → empty
-			if r.URL.Query().Get("per_page") == "1" {
-				w.Header().Set("X-RateLimit-Remaining", "0")
-				w.Header().Set("X-RateLimit-Limit", "60")
-				w.Header().Set("X-RateLimit-Reset", reset)
-				w.WriteHeader(http.StatusForbidden)
-				return
-			}
 			w.WriteHeader(http.StatusOK)
 			_, _ = fmt.Fprint(w, `[]`)
 		case "/repos/acme/widget/pulls":
-			w.WriteHeader(http.StatusOK)
-			_, _ = fmt.Fprint(w, `[]`)
-		default:
-			w.WriteHeader(http.StatusOK)
-			_, _ = fmt.Fprint(w, `[]`)
-		}
-	}))
-	defer srv.Close()
-
-	c := client(srv)
-	got, err := Collect(context.Background(), c, "acme", "widget", now)
-	if err != nil {
-		t.Fatalf("Collect should degrade on issues count error; got: %v", err)
-	}
-	if !containsStr(got.Partial, "issue_count_open") {
-		t.Errorf("Partial = %v; want to contain %q", got.Partial, "issue_count_open")
-	}
-}
-
-func TestCollect_PullRequestCounts_Error_DegradesToPartial(t *testing.T) {
-	now, _ := time.Parse(time.RFC3339, "2026-06-22T00:00:00Z")
-	reset := strconv.FormatInt(time.Now().Add(30*time.Minute).Unix(), 10)
-
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		switch r.URL.Path {
-		case "/repos/acme/widget":
-			w.WriteHeader(http.StatusOK)
-			_, _ = fmt.Fprint(w, repoJSON)
-		case "/repos/acme/widget/community/profile":
-			w.WriteHeader(http.StatusOK)
-			_, _ = fmt.Fprint(w, communityJSON)
-		case "/repos/acme/widget/stats/contributors":
-			w.WriteHeader(http.StatusOK)
-			_, _ = fmt.Fprint(w, `[]`)
-		case "/repos/acme/widget/stats/commit_activity":
-			w.WriteHeader(http.StatusOK)
-			_, _ = fmt.Fprint(w, `[]`)
-		case "/repos/acme/widget/releases":
-			w.WriteHeader(http.StatusOK)
-			_, _ = fmt.Fprint(w, `[]`)
-		case "/repos/acme/widget/actions/workflows":
-			w.WriteHeader(http.StatusOK)
-			_, _ = fmt.Fprint(w, `{"total_count":0,"workflows":[]}`)
-		case "/repos/acme/widget/issues":
-			// CountByState calls with per_page=1; RecentIssues with per_page=100
-			w.WriteHeader(http.StatusOK)
-			_, _ = fmt.Fprint(w, `[]`)
-		case "/repos/acme/widget/pulls":
-			// per_page=1 (CountByState for PRs) → rate limit; per_page=100 (RecentPulls) → empty
-			if r.URL.Query().Get("per_page") == "1" {
-				w.Header().Set("X-RateLimit-Remaining", "0")
-				w.Header().Set("X-RateLimit-Limit", "60")
-				w.Header().Set("X-RateLimit-Reset", reset)
-				w.WriteHeader(http.StatusForbidden)
+			// state=all & sort=created → RecentPullsByCreation (pr_cohort) → rate-limit.
+			// state=closed & sort=updated → RecentPulls (closed_pulls) → OK.
+			q := r.URL.Query()
+			if q.Get("state") == "all" && q.Get("sort") == "created" {
+				rateLimitHandler()(w, r)
 				return
 			}
 			w.WriteHeader(http.StatusOK)
@@ -539,21 +481,46 @@ func TestCollect_PullRequestCounts_Error_DegradesToPartial(t *testing.T) {
 	c := client(srv)
 	got, err := Collect(context.Background(), c, "acme", "widget", now)
 	if err != nil {
-		t.Fatalf("Collect should degrade on PR count error; got: %v", err)
+		t.Fatalf("Collect should not abort on pr_cohort rate-limit; got: %v", err)
 	}
-	if !containsStr(got.Partial, "pr_counts") {
-		t.Errorf("Partial = %v; want to contain %q", got.Partial, "pr_counts")
+	if !containsStr(got.Partial, "pr_cohort") {
+		t.Errorf("Partial = %v; want to contain %q", got.Partial, "pr_cohort")
+	}
+	// Counts stay zero → neutral 50 via ratioScore.
+	if got.RecentPRsMerged != 0 {
+		t.Errorf("RecentPRsMerged = %d; want 0 when pr_cohort degraded", got.RecentPRsMerged)
+	}
+	if got.RecentPRsOpen != 0 {
+		t.Errorf("RecentPRsOpen = %d; want 0 when pr_cohort degraded", got.RecentPRsOpen)
 	}
 }
 
 // ---------------------------------------------------------------------------
-// Issue count minus PR math: clamp to ≥0
+// Cohort window exclusion: issues/PRs outside 90d are not counted
 // ---------------------------------------------------------------------------
 
-func TestCollect_IssueCountMinusPRClamp(t *testing.T) {
+// TestIssueCreationCohort_WindowExclusion verifies that issues with CreatedAt
+// older than the 90-day newcomerWindow are excluded from RecentIssuesClosed and
+// RecentIssuesOpen, and that issues on the boundary are included.
+func TestIssueCreationCohort_WindowExclusion(t *testing.T) {
 	now, _ := time.Parse(time.RFC3339, "2026-06-22T00:00:00Z")
 
-	// open issues=5, open PRs=10 → OpenIssues should be clamped to 0 (not -5)
+	// Three issues: one within window (open), one outside window (closed), one
+	// exactly at boundary (open). Only the in-window and boundary issues count.
+	inWindow := now.Add(-10 * 24 * time.Hour).UTC().Format(time.RFC3339)
+	outWindow := now.Add(-200 * 24 * time.Hour).UTC().Format(time.RFC3339)
+	// Boundary: exactly 90 days ago is still within the window (not Before).
+	boundary := now.Add(-90 * 24 * time.Hour).UTC().Format(time.RFC3339)
+
+	issuesBody := fmt.Sprintf(`[
+		{"number":1,"state":"open","created_at":%q,"closed_at":null,"comments":0,
+		 "user":{"login":"alice","type":"User"}},
+		{"number":2,"state":"closed","created_at":%q,"closed_at":%q,"comments":0,
+		 "user":{"login":"bob","type":"User"}},
+		{"number":3,"state":"open","created_at":%q,"closed_at":null,"comments":0,
+		 "user":{"login":"carol","type":"User"}}
+	]`, inWindow, outWindow, outWindow, boundary)
+
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		switch r.URL.Path {
@@ -576,30 +543,16 @@ func TestCollect_IssueCountMinusPRClamp(t *testing.T) {
 			w.WriteHeader(http.StatusOK)
 			_, _ = fmt.Fprint(w, `{"total_count":0,"workflows":[]}`)
 		case "/repos/acme/widget/issues":
-			q := r.URL.Query()
-			if q.Get("state") == "open" && q.Get("per_page") == "1" {
-				// 5 open issues — Link header must be set BEFORE WriteHeader.
-				w.Header().Set("Link", `<https://x?page=5>; rel="last"`)
-				w.WriteHeader(http.StatusOK)
-				_, _ = fmt.Fprint(w, `[{}]`)
-			} else if q.Get("state") == "closed" && q.Get("per_page") == "1" {
-				w.WriteHeader(http.StatusOK)
-				_, _ = fmt.Fprint(w, `[{}]`)
-			} else {
-				w.WriteHeader(http.StatusOK)
-				_, _ = fmt.Fprint(w, `[]`)
-			}
+			// Both TTFR (state=all) and comments calls share this path;
+			// return issues for any query — the cohort filter is what's under test.
+			w.WriteHeader(http.StatusOK)
+			_, _ = fmt.Fprint(w, issuesBody)
 		case "/repos/acme/widget/pulls":
-			q := r.URL.Query()
-			if q.Get("state") == "open" && q.Get("per_page") == "1" {
-				// 10 open PRs — more than the 5 open issues.
-				w.Header().Set("Link", `<https://x?page=10>; rel="last"`)
-				w.WriteHeader(http.StatusOK)
-				_, _ = fmt.Fprint(w, `[{}]`)
-			} else {
-				w.WriteHeader(http.StatusOK)
-				_, _ = fmt.Fprint(w, `[]`)
-			}
+			w.WriteHeader(http.StatusOK)
+			_, _ = fmt.Fprint(w, `[]`)
+		case "/repos/acme/widget/issues/comments":
+			w.WriteHeader(http.StatusOK)
+			_, _ = fmt.Fprint(w, `[]`)
 		default:
 			w.WriteHeader(http.StatusOK)
 			_, _ = fmt.Fprint(w, `[]`)
@@ -612,7 +565,12 @@ func TestCollect_IssueCountMinusPRClamp(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Collect: %v", err)
 	}
-	if got.OpenIssues < 0 {
-		t.Errorf("OpenIssues = %d; want ≥0 (clamped)", got.OpenIssues)
+	// issue 2 (closed, 200d ago) is outside the window → excluded.
+	// issue 1 (open, 10d ago) and issue 3 (open, 90d ago boundary) are included.
+	if got.RecentIssuesClosed != 0 {
+		t.Errorf("RecentIssuesClosed = %d; want 0 (outside-window issue excluded)", got.RecentIssuesClosed)
+	}
+	if got.RecentIssuesOpen != 2 {
+		t.Errorf("RecentIssuesOpen = %d; want 2 (in-window + boundary)", got.RecentIssuesOpen)
 	}
 }

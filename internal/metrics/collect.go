@@ -73,9 +73,9 @@ func Collect(ctx context.Context, c *github.Client, owner, repo string, now time
 		commits  commitResult
 		rels     releaseResult
 		flows    workflowResult
-		counts   countResult
 		closedPR closedPullsResult
 		ttfr     ttfrResult
+		prCohort prCohortResult
 	)
 
 	g.Go(func() error { return collectCommunity(gctx, c, owner, repo, sem, &comm) })
@@ -83,15 +83,15 @@ func Collect(ctx context.Context, c *github.Client, owner, repo string, now time
 	g.Go(func() error { return collectCommits(gctx, c, owner, repo, sem, &commits) })
 	g.Go(func() error { return collectReleases(gctx, c, owner, repo, sem, now, &rels) })
 	g.Go(func() error { return collectWorkflows(gctx, c, owner, repo, sem, &flows) })
-	g.Go(func() error { return collectCounts(gctx, c, owner, repo, sem, &counts) })
 	g.Go(func() error { return collectClosedPulls(gctx, c, owner, repo, sem, now, &closedPR) })
-	g.Go(func() error { return collectTTFR(gctx, c, owner, repo, sem, &ttfr) })
+	g.Go(func() error { return collectTTFR(gctx, c, owner, repo, sem, now, &ttfr) })
+	g.Go(func() error { return collectPRCohort(gctx, c, owner, repo, sem, now, &prCohort) })
 
 	if err := g.Wait(); err != nil {
 		return raw, err
 	}
 
-	assemble(&raw, &comm, &contrib, &commits, &rels, &flows, &counts, &closedPR, &ttfr)
+	assemble(&raw, &comm, &contrib, &commits, &rels, &flows, &closedPR, &ttfr, &prCohort)
 	return raw, nil
 }
 
@@ -121,9 +121,9 @@ func assemble(
 	commits *commitResult,
 	rels *releaseResult,
 	flows *workflowResult,
-	counts *countResult,
 	closedPR *closedPullsResult,
 	ttfr *ttfrResult,
+	prCohort *prCohortResult,
 ) {
 	if comm.ok {
 		raw.HealthPercentage = comm.healthPercentage
@@ -142,14 +142,15 @@ func assemble(
 	raw.HasCI = flows.hasCI
 	raw.UsesPullRequestTarget = flows.usesPRT
 	raw.WorkflowsFetched = flows.fetched
-	raw.OpenPRs = counts.openPRs
-	raw.OpenIssues = clampZero(counts.openIssues - counts.openPRs)
-	raw.ClosedIssues = clampZero(counts.closedIssues - counts.closedPRs)
 	raw.MergedPRs = closedPR.merged
 	raw.ClosedUnmergedPRs = closedPR.unmerged
 	raw.NewcomerPRsMerged = closedPR.newcomerMerged
 	raw.NewcomerPRsClosedUnmerged = closedPR.newcomerUnmerged
 	raw.MedianIssueFirstResponseHours = ttfr.median
+	raw.RecentIssuesClosed = ttfr.recentIssuesClosed
+	raw.RecentIssuesOpen = ttfr.recentIssuesOpen
+	raw.RecentPRsMerged = prCohort.recentPRsMerged
+	raw.RecentPRsOpen = prCohort.recentPRsOpen
 
 	// Canonical Partial order; append only the degradations that occurred.
 	appendPartial(raw, comm.partial)
@@ -157,9 +158,9 @@ func assemble(
 	appendPartial(raw, commits.partial)
 	appendPartial(raw, rels.partial)
 	appendPartial(raw, flows.partial)
-	raw.Partial = append(raw.Partial, counts.partial...)
 	appendPartial(raw, closedPR.partial)
 	appendPartial(raw, ttfr.partial)
+	appendPartial(raw, prCohort.partial)
 }
 
 // appendPartial appends a single non-empty partial marker to raw.Partial.
@@ -173,12 +174,4 @@ func appendPartial(raw *score.RawMetrics, marker string) {
 // These abort the whole collection rather than degrading to Partial.
 func isContextError(err error) bool {
 	return errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)
-}
-
-// clampZero returns n if n >= 0, else 0.
-func clampZero(n int) int {
-	if n < 0 {
-		return 0
-	}
-	return n
 }

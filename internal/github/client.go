@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -256,37 +255,6 @@ func sleep(ctx context.Context, d time.Duration) error {
 	case <-t.C:
 		return nil
 	}
-}
-
-// lastPageCount extracts the total item count for a paginated collection by
-// reading the rel="last" page number from the Link header of a per_page=1
-// request. When there is no Link header (a single page) the caller falls back
-// to counting the returned slice.
-func lastPageCount(h http.Header) (int, bool) {
-	link := h.Get("Link")
-	if link == "" {
-		return 0, false
-	}
-	for _, part := range strings.Split(link, ",") {
-		if !strings.Contains(part, `rel="last"`) {
-			continue
-		}
-		start := strings.Index(part, "<")
-		end := strings.Index(part, ">")
-		if start < 0 || end < 0 || end <= start {
-			continue
-		}
-		u, err := url.Parse(part[start+1 : end])
-		if err != nil {
-			continue
-		}
-		if p := u.Query().Get("page"); p != "" {
-			if n, err := strconv.Atoi(p); err == nil {
-				return n, true
-			}
-		}
-	}
-	return 0, false
 }
 
 var errEmptyOwnerRepo = errors.New("owner and repo must both be non-empty")

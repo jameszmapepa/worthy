@@ -23,13 +23,21 @@ type RawMetrics struct {
 	CommitsLast52Weeks   []int // weekly repository-wide commit counts, oldest..newest
 	DaysSinceLastPush    int   // recency of the last push to the default branch
 	RepoAgeDays          int   // age of the repository (created_at proxy)
-	OpenIssues           int   // open issues, excluding PRs
-	ClosedIssues         int   // closed issues, excluding PRs
-	OpenPRs              int   // open pull requests
-	MergedPRs            int   // merged pull requests
-	ClosedUnmergedPRs    int   // pull requests closed without merging
+	MergedPRs            int   // merged pull requests (all-time; used by pr_acceptance)
+	ClosedUnmergedPRs    int   // pull requests closed without merging (all-time; used by pr_acceptance)
 	ReleaseCount         int   // published releases (excludes draft/prerelease)
 	DaysSinceLastRelease int   // recency of the most recent published release
+
+	// Recent 90-day creation cohort counts (zero = neutral no-data via ratioScore).
+	// Source: non-PR issues with CreatedAt >= now-90d, derived from the existing
+	// RecentIssues fetch (no additional API call).
+	RecentIssuesClosed int
+	RecentIssuesOpen   int
+	// Source: PRs with CreatedAt >= now-90d, from a new RecentPullsByCreation call
+	// (state=all, sort=created desc). Closed-unmerged PRs are excluded from both
+	// numerator and denominator.
+	RecentPRsMerged int
+	RecentPRsOpen   int
 
 	// Community / governance inputs.
 	MedianIssueFirstResponseHours float64 // bot-filtered median time-to-first-response; <=0 means no data

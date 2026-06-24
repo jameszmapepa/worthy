@@ -184,10 +184,6 @@ func TestCollect_PartialOrderDeterministic(t *testing.T) {
 			w.Header().Set("X-RateLimit-Limit", "60")
 			w.Header().Set("X-RateLimit-Reset", reset)
 			w.WriteHeader(http.StatusForbidden)
-		case path == "/repos/acme/widget/issues" && q.Get("per_page") == "1":
-			w.WriteHeader(http.StatusInternalServerError)
-		case path == "/repos/acme/widget/pulls" && q.Get("per_page") == "1":
-			w.WriteHeader(http.StatusInternalServerError)
 		case path == "/repos/acme/widget/pulls" && q.Get("state") == "closed":
 			w.WriteHeader(http.StatusInternalServerError)
 		case path == "/repos/acme/widget/issues" && q.Get("state") == "all":
@@ -219,7 +215,6 @@ func TestCollect_PartialOrderDeterministic(t *testing.T) {
 	want := []string{
 		"community_profile", "contributor_stats", "releases",
 		"workflow_safety",
-		"issue_count_open", "issue_count_closed", "pr_counts",
 		"closed_pulls", "issue_ttfr",
 	}
 	if !reflect.DeepEqual(first.Partial, want) {
