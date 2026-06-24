@@ -209,17 +209,21 @@ func TestNewcomerMergeRate(t *testing.T) {
 }
 
 func TestGovernanceDocs(t *testing.T) {
+	// LICENSE is intentionally excluded from governance_docs (it is scored by the
+	// standalone `license` sub-score) to avoid double-counting it in Community.
+	// Remaining doc weights re-normalize to README .40 / CONTRIB .35 / CoC .25.
 	tests := []struct {
 		name                      string
 		readme, contrib, coc, lic bool
 		want                      float64
 	}{
 		{"none -> 0", false, false, false, false, 0},
-		{"all -> 100", true, true, true, true, 100},
-		{"readme only -> 25", true, false, false, false, 25},
-		{"license only -> 30", false, false, false, true, 30},
-		{"coc only -> 20", false, false, true, false, 20},
-		{"contributing only -> 25", false, true, false, false, 25},
+		{"all docs -> 100", true, true, true, true, 100},
+		{"readme only -> 40", true, false, false, false, 40},
+		{"license does not contribute -> 0", false, false, false, true, 0},
+		{"coc only -> 25", false, false, true, false, 25},
+		{"contributing only -> 35", false, true, false, false, 35},
+		{"readme + coc -> 65 (additive, not overwritten)", true, false, true, false, 65},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -230,6 +234,36 @@ func TestGovernanceDocs(t *testing.T) {
 				HasLicense:       tc.lic,
 			})
 			approx(t, got.Value, tc.want, "governance_docs")
+		})
+	}
+}
+
+func TestBusFactor(t *testing.T) {
+	tests := []struct {
+		name  string
+		share float64
+		count int
+		want  float64
+	}{
+		{"no contributor data -> 50 (neutral)", 0, 0, 50},
+		{"well distributed -> 100", 0.3, 20, 100},
+		{"single dominant author -> 0", 1.0, 1, 0},
+		{"gate-extreme 0.9 share / 1 contributor", 0.9, 1, 10},
+		{"sub-gate fragile 0.75 share / 3 contributors", 0.75, 3, 45},
+		{"moderate 0.5 share / 4 contributors", 0.5, 4, 80},
+		// Isolate each clamp independently (pin them one at a time).
+		{"concentration clamps at ceiling: low share, mid pool", 0.2, 3, 80},
+		{"negative share clamps to full concentration", -0.5, 3, 80},
+		{"over-1 share floors concentration to 0", 1.5, 5, 40},
+		{"pool clamps at ceiling: mid share, huge pool", 0.7, 100, 70},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := busFactor(RawMetrics{
+				TopContributorRecentShare: tc.share,
+				ContributorCount:          tc.count,
+			})
+			approx(t, got.Value, tc.want, "bus_factor")
 		})
 	}
 }

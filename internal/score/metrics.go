@@ -46,10 +46,13 @@ type RawMetrics struct {
 	TopContributorRecentShare     float64 // top login's fraction of last-12-week commits (0..1)
 	ContributorCount              int     // contributors with >0 recent commits
 
-	HasReadme         bool   // README present
-	HasContributing   bool   // CONTRIBUTING present
-	HasCodeOfConduct  bool   // CODE_OF_CONDUCT present
-	HasLicense        bool   // LICENSE file present (community profile)
+	HasReadme        bool // README present
+	HasContributing  bool // CONTRIBUTING present
+	HasCodeOfConduct bool // CODE_OF_CONDUCT present
+	HasLicense       bool // LICENSE file present (community profile)
+	// ceiling: no longer scored — governance_docs dropped LICENSE to avoid
+	// double-counting it against the standalone license sub-score (LicenseSPDX).
+	// Still collected; remove from RawMetrics + collect.go in a later cleanup.
 	HasSecurityPolicy bool   // SECURITY policy present
 	HealthPercentage  int    // GitHub community-profile presence-only score (0..100)
 	LicenseSPDX       string // SPDX id; "" or "NOASSERTION" means no recognized license

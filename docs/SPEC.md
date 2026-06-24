@@ -111,16 +111,25 @@ Formula string, Weight, Gates []string }`.
   `DaysSinceLastRelease`: <=90d ->100, >=730d ->0, linear.
 - `issue_close_ratio`: `RecentIssuesClosed/(RecentIssuesClosed+RecentIssuesOpen)*100`; 90-day creation cohort (non-PR issues with `CreatedAt >= now-90d`); zero in-cohort issues → 50 (neutral).
 - `pr_backlog`: `RecentPRsMerged/(RecentPRsMerged+RecentPRsOpen)*100`; 90-day creation cohort (PRs with `CreatedAt >= now-90d`); closed-unmerged excluded; zero in-cohort PRs → 50 (neutral).
+- `bus_factor`: continuous companion to the `bus_factor` gate.
+  `0.6*concentration + 0.4*pool`, where `concentration = clamp((1−TopContributorRecentShare)/0.6*100, 0, 100)`
+  (top share ≤0.40 → 100) and `pool = clamp((ContributorCount−1)/4*100, 0, 100)`
+  (≥5 contributors → 100). `ContributorCount==0` → 50 (no data). Proxy over the
+  two metrics collected; the exact CHAOSS bus factor needs the full
+  per-contributor distribution, which is not fetched.
 
-**Community/Governance category (weight 0.45):**
-- `issue_responsiveness`: from `MedianIssueFirstResponseHours`. <=24h ->100;
-  24-168h ->100..60; 168-720h ->60..0; >720h ->0; no issue data at all -> 50.
-- `pr_acceptance`: `MergedPRs/(MergedPRs+ClosedUnmergedPRs)*100`; no closed PRs -> 50.
-- `newcomer_merge_rate`: `NewcomerPRsMerged/(merged+closedUnmerged)*100`; no
+**Community/Governance category (weight 0.45):** weighted (not equal) within the
+category — the most direct contribution signals lead, presence-boolean docs act
+as a floor.
+- `newcomer_merge_rate` (sub-weight .30): `NewcomerPRsMerged/(merged+closedUnmerged)*100`; no
   newcomer PRs -> 50 (unknown/neutral).
-- `governance_docs`: weighted presence — README .25, CONTRIBUTING .25,
-  CODE_OF_CONDUCT .2, LICENSE .3, *100.
-- `license`: 100 if recognized SPDX present (not ""/"NOASSERTION"); else 0.
+- `issue_responsiveness` (sub-weight .25): from `MedianIssueFirstResponseHours`. <=24h ->100;
+  24-168h ->100..60; 168-720h ->60..0; >720h ->0; no issue data at all -> 50.
+- `pr_acceptance` (sub-weight .20): `MergedPRs/(MergedPRs+ClosedUnmergedPRs)*100`; no closed PRs -> 50.
+- `governance_docs` (sub-weight .15): weighted presence — README .40, CONTRIBUTING .35,
+  CODE_OF_CONDUCT .25, *100. LICENSE is excluded here (scored by `license`) to
+  avoid double-counting license presence in Community.
+- `license` (sub-weight .10): 100 if recognized SPDX present (not ""/"NOASSERTION"); else 0.
 
 **Security/Integrity category (weight 0.10):**
 - `ci_present`: `HasCI` -> 100 else 0.
@@ -132,7 +141,8 @@ Formula string, Weight, Gates []string }`.
 
 ```
 categoryScore(cat) = weighted average of its sub-scores by per-sub weights
-                     (equal within category unless noted above)
+                     (equal within Activity & Security; Community uses the
+                      per-sub weights noted above, summing to 1.0)
 composite = 0.45*Activity + 0.45*Community + 0.10*Security   (0..100)
 ```
 
@@ -148,7 +158,9 @@ HowToClear string, CapTo *float64 }`.
 it introduces no new thresholds and does not affect scoring).
 
 1. **bus_factor** (`TopContributorRecentShare > 0.80` AND `ContributorCount<=2`):
-   warn, CapTo 70.
+   warn, CapTo 70. The gate predicate reads raw metrics (so the `bus_factor`
+   sub-score carries no gate link); the sub-score grades the danger zone below
+   this extreme.
 2. **closed_to_strangers** (`pr_acceptance >= 70` AND `newcomer_merge_rate <= 15`
    AND newcomer sample > 0): warn, CapTo 75.
 3. **stale_or_archived** (`Archived || Disabled || DaysSinceLastPush > 365`):

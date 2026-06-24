@@ -31,8 +31,9 @@ type SubScore struct {
 // condition references that sub-score (derived from the predicates in gates.go).
 // It is declarative so the scorecard drill-down and Explain view can show which
 // gates an indicator feeds without re-deriving the linkage. Sub-scores absent
-// here carry no links. bus_factor and vanity_stars reference only raw metrics,
-// so no sub-score links to them.
+// here carry no links. The bus_factor and vanity_stars gate predicates read raw
+// metrics directly, not a sub-score value, so no sub-score links to them — the
+// bus_factor sub-score grades the same signal independently of its gate.
 var subScoreGateLinks = map[string][]string{
 	"pr_acceptance":       {"closed_to_strangers"},
 	"newcomer_merge_rate": {"closed_to_strangers"},
@@ -71,13 +72,17 @@ func Evaluate(raw RawMetrics) Report {
 		releaseCadence(raw),
 		issueCloseRatio(raw),
 		prBacklog(raw),
+		busFactor(raw),
 	})
-	community := makeCategory(CategoryCommunity, "Community", weightCommunity, []SubScore{
-		issueResponsiveness(raw),
-		prAcceptance(raw),
-		newcomerMergeRate(raw),
-		governanceDocs(raw),
-		licenseScore(raw),
+	// Community is weighted (not equal): the most direct contribution signals lead
+	// and the presence-boolean docs/license indicators are down-weighted so they
+	// act as a floor rather than dominating the newcomer verdict.
+	community := makeWeightedCategory(CategoryCommunity, "Community", weightCommunity, []SubScore{
+		withWeight(issueResponsiveness(raw), 0.25),
+		withWeight(prAcceptance(raw), 0.20),
+		withWeight(newcomerMergeRate(raw), 0.30),
+		withWeight(governanceDocs(raw), 0.15),
+		withWeight(licenseScore(raw), 0.10),
 	})
 	security := makeCategory(CategorySecurity, "Security", weightSecurity, []SubScore{
 		ciPresent(raw),
@@ -113,24 +118,37 @@ func Evaluate(raw RawMetrics) Report {
 }
 
 // makeCategory builds a CategoryScore as the equal-weighted average of its
-// sub-scores. Each sub-score carries an equal within-category weight.
+// sub-scores, assigning each an equal within-category weight, then delegating to
+// makeWeightedCategory so the weighted-average computation lives in one place.
 func makeCategory(key, label string, weight float64, subs []SubScore) CategoryScore {
 	n := len(subs)
-	var sum float64
 	w := 0.0
 	if n > 0 {
 		w = 1.0 / float64(n)
 	}
 	weighted := make([]SubScore, n)
 	for i, s := range subs {
-		s.Weight = w
+		weighted[i] = withWeight(s, w)
+	}
+	return makeWeightedCategory(key, label, weight, weighted)
+}
+
+// makeWeightedCategory builds a CategoryScore from sub-scores that already carry
+// their within-category weights (expected to sum to 1.0). The category value is
+// the weight-normalized average of the sub-score values. It also attaches each
+// sub-score's declarative gate links.
+func makeWeightedCategory(key, label string, weight float64, subs []SubScore) CategoryScore {
+	var sum, wsum float64
+	weighted := make([]SubScore, len(subs))
+	for i, s := range subs {
 		s.Gates = subScoreGateLinks[s.Key]
 		weighted[i] = s
-		sum += s.Value
+		sum += s.Value * s.Weight
+		wsum += s.Weight
 	}
 	value := 0.0
-	if n > 0 {
-		value = sum / float64(n)
+	if wsum > 0 {
+		value = sum / wsum
 	}
 	return CategoryScore{
 		Key:    key,
@@ -139,6 +157,12 @@ func makeCategory(key, label string, weight float64, subs []SubScore) CategorySc
 		Weight: weight,
 		Subs:   weighted,
 	}
+}
+
+// withWeight returns a copy of s with its within-category Weight set.
+func withWeight(s SubScore, w float64) SubScore {
+	s.Weight = w
+	return s
 }
 
 // letterGrade maps a 0..100 score to a letter grade on the spec thresholds.
