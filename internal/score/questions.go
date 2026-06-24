@@ -13,14 +13,15 @@ type QuestionScore struct {
 }
 
 // questionDefs maps each contributor-facing question to the categories that
-// answer it. "Will it last?" (active maintenance) is carried by Activity and
-// Security; "Will my PR land?" (newcomer experience) by Community. Together they
-// partition all three categories.
+// answer it. "Will it last?" (active maintenance) is carried by Activity only;
+// "Will my PR land?" (newcomer experience) by Community only. Security is not
+// mapped here — it is displayed as a separate "Supply-chain integrity" section
+// because integrity signals measure provenance, not project liveness.
 var questionDefs = []struct {
 	key, label string
 	cats       []string
 }{
-	{"maintained", "Will it last?", []string{CategoryActivity, CategorySecurity}},
+	{"maintained", "Will it last?", []string{CategoryActivity}},
 	{"newcomer", "Will my PR land?", []string{CategoryCommunity}},
 }
 

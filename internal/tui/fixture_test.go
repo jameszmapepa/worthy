@@ -10,7 +10,7 @@ func fixedReport() score.Report {
 	return score.Report{
 		Categories: []score.CategoryScore{
 			{
-				Key: score.CategoryActivity, Label: "Activity", Value: 82.5, Weight: 0.40,
+				Key: score.CategoryActivity, Label: "Activity", Value: 82.5, Weight: 0.45,
 				Subs: []score.SubScore{
 					{Key: "commit_frequency", Label: "Commit frequency", Value: 90, Raw: "13.5 commits/wk", Formula: "min(100, median12/15 × 100)", Weight: 0.2},
 					{Key: "commit_recency", Label: "Commit recency", Value: 55, Raw: "164d since last push", Formula: "max(0, 100 − days/365 × 100)", Weight: 0.2, Gates: []string{"stale_or_archived"}},
@@ -18,14 +18,14 @@ func fixedReport() score.Report {
 				},
 			},
 			{
-				Key: score.CategoryCommunity, Label: "Community", Value: 64.0, Weight: 0.30,
+				Key: score.CategoryCommunity, Label: "Community", Value: 64.0, Weight: 0.45,
 				Subs: []score.SubScore{
 					{Key: "issue_responsiveness", Label: "Issue responsiveness", Value: 64, Raw: "96h to first response", Weight: 0.2},
 					{Key: "license", Label: "License", Value: 100, Raw: "MIT", Weight: 0.2},
 				},
 			},
 			{
-				Key: score.CategorySecurity, Label: "Security", Value: 50.0, Weight: 0.30,
+				Key: score.CategorySecurity, Label: "Security", Value: 50.0, Weight: 0.10,
 				Subs: []score.SubScore{
 					{Key: "ci_present", Label: "CI present", Value: 100, Raw: "CI active", Weight: 0.25},
 					{Key: "workflow_safety", Label: "Workflow safety", Value: 30, Raw: "uses pull_request_target", Weight: 0.25},
@@ -49,14 +49,14 @@ func healthyFixedReport() score.Report {
 	return score.Report{
 		Categories: []score.CategoryScore{
 			{
-				Key: score.CategoryActivity, Label: "Activity", Value: 92.0, Weight: 0.40,
+				Key: score.CategoryActivity, Label: "Activity", Value: 92.0, Weight: 0.45,
 				Subs: []score.SubScore{
 					{Key: "commit_frequency", Label: "Commit frequency", Value: 95, Raw: "14 commits/wk", Weight: 0.5},
 					{Key: "commit_recency", Label: "Commit recency", Value: 89, Raw: "5d since last push", Weight: 0.5},
 				},
 			},
 			{
-				Key: score.CategorySecurity, Label: "Security", Value: 80.0, Weight: 0.30,
+				Key: score.CategorySecurity, Label: "Security", Value: 80.0, Weight: 0.10,
 				Subs: []score.SubScore{
 					{Key: "ci_present", Label: "CI present", Value: 100, Raw: "CI active", Weight: 0.5},
 					{Key: "workflow_safety", Label: "Workflow safety", Value: 60, Raw: "workflows not inspected", Weight: 0.5},

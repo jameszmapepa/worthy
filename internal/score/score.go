@@ -11,9 +11,9 @@ const (
 
 // Category weights in the composite. They sum to 1.0.
 const (
-	weightActivity  = 0.40
-	weightCommunity = 0.30
-	weightSecurity  = 0.30
+	weightActivity  = 0.45
+	weightCommunity = 0.45
+	weightSecurity  = 0.10
 )
 
 // SubScore is a single scored health indicator in the range 0..100.

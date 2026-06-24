@@ -29,7 +29,8 @@ func TestQuestionVerdictsOrderAndKeys(t *testing.T) {
 	if got[0].Label != "Will it last?" || got[1].Label != "Will my PR land?" {
 		t.Errorf("labels = %q,%q", got[0].Label, got[1].Label)
 	}
-	wantMaintainedCats := []string{CategoryActivity, CategorySecurity}
+	// maintained = Activity only; Security is removed from question mapping.
+	wantMaintainedCats := []string{CategoryActivity}
 	if !equalStrings(got[0].CategoryKeys, wantMaintainedCats) {
 		t.Errorf("maintained categories = %v, want %v", got[0].CategoryKeys, wantMaintainedCats)
 	}
@@ -38,19 +39,32 @@ func TestQuestionVerdictsOrderAndKeys(t *testing.T) {
 	}
 }
 
+func TestQuestionVerdictsSecurityAbsentFromQuestions(t *testing.T) {
+	// Security must not appear in any QuestionScore's CategoryKeys.
+	r := reportWith(90, 60, 70)
+	got := QuestionVerdicts(r)
+	for _, q := range got {
+		for _, ck := range q.CategoryKeys {
+			if ck == CategorySecurity {
+				t.Errorf("question %q must not include Security category", q.Key)
+			}
+		}
+	}
+}
+
 func TestQuestionVerdictsWeightedMaintained(t *testing.T) {
-	// Arrange: activity 90 (w .40), security 70 (w .30) -> (36+21)/0.70 = 81.4
+	// Arrange: maintained = Activity only (w 0.45) -> value == activity value == 90.
 	r := reportWith(90, 60, 70)
 
 	// Act
 	got := QuestionVerdicts(r)
 
-	// Assert
-	if got[0].Value != 81.4 {
-		t.Errorf("maintained value = %.2f, want 81.4", got[0].Value)
+	// Assert: maintained is Activity alone, so its value is exactly 90.
+	if got[0].Value != 90 {
+		t.Errorf("maintained value = %.2f, want 90 (Activity only)", got[0].Value)
 	}
-	if got[0].Grade != "B" {
-		t.Errorf("maintained grade = %q, want B", got[0].Grade)
+	if got[0].Grade != "A" {
+		t.Errorf("maintained grade = %q, want A (>=85)", got[0].Grade)
 	}
 }
 

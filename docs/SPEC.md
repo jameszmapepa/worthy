@@ -101,7 +101,7 @@ Formula string, Weight, Gates []string }`.
   carry an empty slice. `bus_factor` and `vanity_stars` reference only raw
   metrics, so no sub-score links to them.
 
-**Activity category (weight 0.40):**
+**Activity category (weight 0.45):**
 - `commit_frequency`: median weekly commits over last 12 weeks. Saturating curve:
   0 -> 0; >=15/wk -> 100; linear between: `min(100, median12/15*100)`.
 - `commit_recency`: `DaysSinceLastPush`. 0d -> 100; >=365d -> 0:
@@ -111,7 +111,7 @@ Formula string, Weight, Gates []string }`.
 - `issue_close_ratio`: `ClosedIssues/(OpenIssues+ClosedIssues)*100`; zero issues -> 50.
 - `pr_backlog`: `MergedPRs/(MergedPRs+OpenPRs)*100`; no PRs -> 50.
 
-**Community/Governance category (weight 0.30):**
+**Community/Governance category (weight 0.45):**
 - `issue_responsiveness`: from `MedianIssueFirstResponseHours`. <=24h ->100;
   24-168h ->100..60; 168-720h ->60..0; >720h ->0; no issue data at all -> 50.
 - `pr_acceptance`: `MergedPRs/(MergedPRs+ClosedUnmergedPRs)*100`; no closed PRs -> 50.
@@ -121,7 +121,7 @@ Formula string, Weight, Gates []string }`.
   CODE_OF_CONDUCT .2, LICENSE .3, *100.
 - `license`: 100 if recognized SPDX present (not ""/"NOASSERTION"); else 0.
 
-**Security/Integrity category (weight 0.30):**
+**Security/Integrity category (weight 0.10):**
 - `ci_present`: `HasCI` -> 100 else 0.
 - `signed_releases`: `HasSignedReleaseAssets` ->100; `ReleaseCount==0` ->40; else 0.
 - `security_policy`: `HasSecurityPolicy` ->100 else 0.
@@ -132,7 +132,7 @@ Formula string, Weight, Gates []string }`.
 ```
 categoryScore(cat) = weighted average of its sub-scores by per-sub weights
                      (equal within category unless noted above)
-composite = 0.40*Activity + 0.30*Community + 0.30*Security   (0..100)
+composite = 0.45*Activity + 0.45*Community + 0.10*Security   (0..100)
 ```
 
 Round to one decimal. Letter grade on the gate-ADJUSTED composite:
@@ -172,10 +172,13 @@ Three views, switch with `tab` (cycle) or `1`/`2`/`3`; `q`/`ctrl+c` quits;
 - **View 1 Scorecard:** gate-adjusted composite + letter grade + repo identity;
   per-indicator horizontal bars grouped by category, green (>=70)/amber
   (40-69)/red (<40), each with label, raw metric, bar. Gates listed with glyphs.
-- **View 2 Questions:** every indicator grouped under the two contributor
-  questions — "Will it last?" (Activity + Security) and "Will my PR land?"
-  (Community) — as best-to-worst horizontal bars under a per-question verdict.
-  Indicators are selectable (`j`/`k`/arrows); an inline detail panel (the same
+- **View 2 Questions:** the two contributor questions — "Will it last?"
+  (Activity only) and "Will my PR land?" (Community only) — as best-to-worst
+  horizontal bars under a per-question verdict, followed by a separate
+  "Supply-chain integrity" section displaying the Security category's
+  sub-scores. Security is presented as an integrity section, not a third
+  contributor question. All indicators across both questions and the integrity
+  section are selectable (`j`/`k`/arrows); an inline detail panel (the same
   formula/raw/weight/gates as the scorecard) opens on `enter`.
 - **View 3 Gauges + Sparklines:** `bubbles/v2/progress` bars (static, via
   `ViewAs`) for the 3 categories + composite; ntcharts `sparkline` of
