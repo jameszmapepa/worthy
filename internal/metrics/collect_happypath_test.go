@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 )
@@ -103,6 +104,15 @@ func TestCollect_HappyPath(t *testing.T) {
 		case path == "/repos/acme/widget/issues/12/comments":
 			w.WriteHeader(http.StatusOK)
 			_, _ = fmt.Fprint(w, issue12Comments)
+
+		// Newcomer-label search: 3 open beginner issues, 1 unassigned.
+		case path == "/search/issues":
+			w.WriteHeader(http.StatusOK)
+			if strings.Contains(r.URL.Query().Get("q"), "no:assignee") {
+				_, _ = fmt.Fprint(w, `{"total_count":1}`)
+			} else {
+				_, _ = fmt.Fprint(w, `{"total_count":3}`)
+			}
 
 		default:
 			w.WriteHeader(http.StatusInternalServerError)
@@ -266,12 +276,15 @@ func TestCollect_HappyPath(t *testing.T) {
 		t.Errorf("StaleNewcomerOpenPRs = %d; want 0", got.StaleNewcomerOpenPRs)
 	}
 
-	// --- A3: label counts — recentIssuesBody has no labels, so both zero ---
-	if got.GoodFirstIssues != 0 {
-		t.Errorf("GoodFirstIssues = %d; want 0 (fixture issues carry no labels)", got.GoodFirstIssues)
+	// --- Newcomer labels (Search API): 3 open, 1 unassigned ---
+	if !got.NewcomerLabelsAvailable {
+		t.Error("NewcomerLabelsAvailable should be true (search served)")
 	}
-	if got.HelpWantedIssues != 0 {
-		t.Errorf("HelpWantedIssues = %d; want 0 (fixture issues carry no labels)", got.HelpWantedIssues)
+	if got.NewcomerLabeledOpen != 3 {
+		t.Errorf("NewcomerLabeledOpen = %d; want 3", got.NewcomerLabeledOpen)
+	}
+	if got.NewcomerLabeledAvailable != 1 {
+		t.Errorf("NewcomerLabeledAvailable = %d; want 1", got.NewcomerLabeledAvailable)
 	}
 
 	// No partial metrics in happy path.

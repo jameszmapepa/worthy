@@ -345,9 +345,11 @@ func TestCollect_MultipleEndpoints500_AllDegrade(t *testing.T) {
 		case "/repos/acme/widget/community/profile":
 			w.WriteHeader(http.StatusOK)
 			_, _ = fmt.Fprint(w, communityJSON)
-		// These all 500 → must end up in Partial.
+		// These all 500 → must end up in Partial. /commits is the commit-activity
+		// fallback; 500 it too so commit_activity degrades when both fail.
 		case "/repos/acme/widget/stats/contributors",
 			"/repos/acme/widget/stats/commit_activity",
+			"/repos/acme/widget/commits",
 			"/repos/acme/widget/releases",
 			"/repos/acme/widget/actions/workflows":
 			w.WriteHeader(http.StatusInternalServerError)

@@ -78,23 +78,25 @@ func Collect(ctx context.Context, c *github.Client, owner, repo string, now time
 		openPR   openPullsResult
 		ttfr     ttfrResult
 		prCohort prCohortResult
+		labels   newcomerLabelResult
 	)
 
 	g.Go(func() error { return collectCommunity(gctx, c, owner, repo, sem, &comm) })
 	g.Go(func() error { return collectContributors(gctx, c, owner, repo, sem, &contrib) })
-	g.Go(func() error { return collectCommits(gctx, c, owner, repo, sem, &commits) })
+	g.Go(func() error { return collectCommits(gctx, c, owner, repo, sem, now, &commits) })
 	g.Go(func() error { return collectReleases(gctx, c, owner, repo, sem, now, &rels) })
 	g.Go(func() error { return collectWorkflows(gctx, c, owner, repo, sem, &flows) })
 	g.Go(func() error { return collectClosedPulls(gctx, c, owner, repo, sem, now, &closedPR) })
 	g.Go(func() error { return collectOpenPulls(gctx, c, owner, repo, sem, now, &openPR) })
 	g.Go(func() error { return collectTTFR(gctx, c, owner, repo, sem, now, &ttfr) })
 	g.Go(func() error { return collectPRCohort(gctx, c, owner, repo, sem, now, &prCohort) })
+	g.Go(func() error { return collectNewcomerLabels(gctx, c, owner, repo, sem, &labels) })
 
 	if err := g.Wait(); err != nil {
 		return raw, err
 	}
 
-	assemble(&raw, &comm, &contrib, &commits, &rels, &flows, &closedPR, &openPR, &ttfr, &prCohort)
+	assemble(&raw, &comm, &contrib, &commits, &rels, &flows, &closedPR, &openPR, &ttfr, &prCohort, &labels)
 	return raw, nil
 }
 
@@ -134,6 +136,7 @@ func assemble(
 	openPR *openPullsResult,
 	ttfr *ttfrResult,
 	prCohort *prCohortResult,
+	labels *newcomerLabelResult,
 ) {
 	if comm.ok {
 		raw.HealthPercentage = comm.healthPercentage
@@ -145,6 +148,8 @@ func assemble(
 	raw.TopContributorRecentShare = contrib.topShare
 	raw.ContributorCount = contrib.count
 	raw.CommitsLast52Weeks = commits.weekly
+	raw.CommitsPerWeekFallback = commits.weeklyAvg
+	raw.HasCommitFallback = commits.hasFallback
 	raw.ReleaseCount = rels.count
 	raw.DaysSinceLastRelease = rels.daysSince
 	raw.HasSignedReleaseAssets = rels.signed
@@ -162,9 +167,10 @@ func assemble(
 	raw.MedianIssueFirstResponseHours = ttfr.median
 	raw.RecentIssuesClosed = ttfr.recentIssuesClosed
 	raw.RecentIssuesOpen = ttfr.recentIssuesOpen
-	// A3: newcomer label counts derived from the issues slice.
-	raw.GoodFirstIssues = ttfr.goodFirstIssues
-	raw.HelpWantedIssues = ttfr.helpWantedIssues
+	// Repo-wide newcomer-label counts from the Search API.
+	raw.NewcomerLabeledOpen = labels.open
+	raw.NewcomerLabeledAvailable = labels.available
+	raw.NewcomerLabelsAvailable = labels.ok
 	raw.RecentPRsMerged = prCohort.recentPRsMerged
 	raw.RecentPRsOpen = prCohort.recentPRsOpen
 
@@ -178,6 +184,7 @@ func assemble(
 	appendPartial(raw, openPR.partial)
 	appendPartial(raw, ttfr.partial)
 	appendPartial(raw, prCohort.partial)
+	appendPartial(raw, labels.partial)
 }
 
 // appendPartial appends a single non-empty partial marker to raw.Partial.

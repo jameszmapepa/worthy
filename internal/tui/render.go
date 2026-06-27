@@ -23,7 +23,7 @@ func (m Model) render() string {
 	}
 	header := renderHeaderPanel(
 		m.owner, m.repo, m.raw,
-		m.state == stateLoaded, m.client.Authenticated(), m.width, grade,
+		m.state == stateLoaded, m.client.Authenticated(), m.width, grade, m.asciiIcons,
 	)
 
 	var body string
@@ -129,11 +129,11 @@ func (m Model) renderFooter() string {
 		hint = "? close help · q quit"
 	case m.canSelect() && m.expanded:
 		// C10: when a drill-down is open, show the collapse key prominently.
-		hint = "← esc collapse · tab/1-4 switch · r refresh · q quit"
+		hint = "esc collapse · ←→ switch view · r refresh · q quit"
 	case m.canSelect():
-		hint = "↑↓ select · enter drill · tab/1-4 switch · r refresh · ? help · q quit"
+		hint = "↑↓ select · enter drill · ←→ switch view · r refresh · ? help · q quit"
 	default:
-		hint = "tab/1-4 switch · r refresh · ? help · q quit"
+		hint = "←→ switch view · r refresh · ? help · q quit"
 	}
 	keys := mutedStyle.Render(hint)
 	return tabs + "    " + keys

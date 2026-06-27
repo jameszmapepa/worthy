@@ -7,31 +7,46 @@ import (
 
 // --- Activity ---------------------------------------------------------------
 
-// commitFrequency scores the median weekly commit count over the last 12
-// weeks on a saturating curve: 0 -> 0, >=15/wk -> 100, linear between.
+// commitFrequency scores the weekly commit count over the last 12 weeks on a
+// saturating curve: 0 -> 0, >=15/wk -> 100, linear between.
 //
-// An EMPTY series means the commit-activity stats were unavailable (GitHub's
-// /stats/commit_activity returns a 202 while recomputing), not that the repo is
-// inactive, so it scores a neutral 50 rather than tanking Activity. A series
-// that is present but all zero is genuinely inactive and keeps scoring 0.
+// Data source priority:
+//  1. CommitsLast52Weeks (the /stats/commit_activity series) -> median of the
+//     last 12 weeks.
+//  2. HasCommitFallback (the /commits-count fallback used when GitHub returns no
+//     stats for very large repos) -> average weekly commits over 12 weeks.
+//  3. Neither available -> neutral 50 with an honest "stats unavailable" note,
+//     rather than implying the repo is inactive.
+//
+// A stats series that is present but all zero is genuinely inactive (scores 0);
+// only a missing series triggers the fallback or the neutral case.
+const commitFrequencyFormula = "min(100, commits-per-week/15 × 100)"
+
 func commitFrequency(raw RawMetrics) SubScore {
-	if len(raw.CommitsLast52Weeks) == 0 {
+	var perWeek float64
+	var rawDesc string
+	switch {
+	case len(raw.CommitsLast52Weeks) > 0:
+		perWeek = medianLast(raw.CommitsLast52Weeks, 12)
+		rawDesc = fmt.Sprintf("%.1f commits/wk (median, 12wk)", perWeek)
+	case raw.HasCommitFallback:
+		perWeek = raw.CommitsPerWeekFallback
+		rawDesc = fmt.Sprintf("~%.1f commits/wk (12wk avg)", perWeek)
+	default:
 		return SubScore{
 			Key:     "commit_frequency",
 			Label:   "Commit frequency",
 			Value:   50,
-			Formula: "min(100, median12/15 × 100)",
-			Raw:     "no commit data",
+			Formula: commitFrequencyFormula,
+			Raw:     "commit stats unavailable",
 		}
 	}
-	median := medianLast(raw.CommitsLast52Weeks, 12)
-	value := clamp(median/15*100, 0, 100)
 	return SubScore{
 		Key:     "commit_frequency",
 		Label:   "Commit frequency",
-		Value:   value,
-		Formula: "min(100, median12/15 × 100)",
-		Raw:     fmt.Sprintf("%.1f commits/wk (median, 12wk)", median),
+		Value:   clamp(perWeek/15*100, 0, 100),
+		Formula: commitFrequencyFormula,
+		Raw:     rawDesc,
 	}
 }
 
@@ -292,37 +307,48 @@ func prResponsiveness(raw RawMetrics) SubScore {
 	}
 }
 
-// newcomerSignalsPerIssue is the points-per-labelled-issue used by
-// newcomerSignals. Ten labelled issues earns a full 100; one earns 10. The
-// signal saturates at 100 so a large issue backlog cannot dominate the score.
-const newcomerSignalsPerIssue = 10.0
+// Newcomer-signals score tiers. The metric asks "is there an open door for a
+// newcomer right now?", not "how many labels exist" — a raw count over-rewards
+// large repos and unfairly F-grades projects that simply do not use these
+// labels (label absence is not hostility). The tiers:
+//   - an AVAILABLE (unassigned) beginner-labelled issue is a genuine open door.
+//   - beginner issues that exist but are all claimed show intent but no opening.
+//   - no beginner labels at all is neutral, not a failure.
+const (
+	newcomerSignalsAvailable = 100.0 // unassigned beginner issues exist
+	newcomerSignalsClaimed   = 60.0  // beginner issues exist but all are assigned
+	newcomerSignalsNone      = 50.0  // no beginner labels (neutral, not penalised)
+)
 
-// newcomerSignals scores the presence of curated entry points: open issues
-// labelled "good first issue" or "help wanted". A project that curates
-// beginner tasks is signalling contributor intent, which is a positive
-// Contributable signal.
+// newcomerSignals scores whether a repo offers an open door to newcomers via
+// curated entry points: OPEN issues labelled "good first issue"/"help wanted"
+// that are still unassigned. Counts are repo-wide (Search API), so curated
+// issues outside the recent-issues window are seen.
 //
-// Formula: min(100, (GoodFirstIssues + HelpWantedIssues) × 10)
+// When the label search did not complete (NewcomerLabelsAvailable is false) the
+// signal is genuinely unknown and defaults to the neutral mid-point rather than
+// punishing a transient API failure.
 //
-// This is intentionally modest (weight 0.05 in Community) so it acts as a
-// bonus for welcoming projects rather than a way to override the
-// closed_to_strangers gate or the newcomer_merge_rate signal. The
-// closed_to_strangers gate still governs the Contributable question as a cap:
-// a project can label many issues but if newcomers' PRs are never merged, the
-// gate fires and depresses the Contributable score regardless.
+// This stays modest (weight 0.05 in Community): the closed_to_strangers gate
+// still governs the Contributable question as a cap, so labelling issues cannot
+// paper over newcomers' PRs never being merged.
 func newcomerSignals(raw RawMetrics) SubScore {
-	const formula = "min(100, (good-first-issue + help-wanted) × 10)"
-	total := raw.GoodFirstIssues + raw.HelpWantedIssues
-	value := clamp(float64(total)*newcomerSignalsPerIssue, 0, 100)
-	rawDesc := fmt.Sprintf("%d labelled issues (%d gfi, %d hw)",
-		total, raw.GoodFirstIssues, raw.HelpWantedIssues)
-	return SubScore{
-		Key:     "newcomer_signals",
-		Label:   "Newcomer signals",
-		Value:   value,
-		Formula: formula,
-		Raw:     rawDesc,
+	const formula = "available→100; present(claimed)→60; none/unknown→50"
+	base := SubScore{Key: "newcomer_signals", Label: "Newcomer signals", Formula: formula}
+	switch {
+	case !raw.NewcomerLabelsAvailable:
+		base.Value, base.Raw = newcomerSignalsNone, "label data unavailable"
+	case raw.NewcomerLabeledAvailable > 0:
+		base.Value = newcomerSignalsAvailable
+		base.Raw = fmt.Sprintf("%d available beginner issues (%d labelled open)",
+			raw.NewcomerLabeledAvailable, raw.NewcomerLabeledOpen)
+	case raw.NewcomerLabeledOpen > 0:
+		base.Value = newcomerSignalsClaimed
+		base.Raw = fmt.Sprintf("%d beginner issues, all assigned", raw.NewcomerLabeledOpen)
+	default:
+		base.Value, base.Raw = newcomerSignalsNone, "no beginner-labelled issues"
 	}
+	return base
 }
 
 // --- helpers ----------------------------------------------------------------

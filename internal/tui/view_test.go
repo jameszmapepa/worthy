@@ -63,13 +63,37 @@ func TestBarColorThresholds(t *testing.T) {
 
 func TestHeaderShowsRateLimitMode(t *testing.T) {
 	raw := fixedRaw()
-	unauth := renderHeaderPanel("charmbracelet", "bubbletea", raw, true, false, 80, "")
+	unauth := renderHeaderPanel("charmbracelet", "bubbletea", raw, true, false, 80, "", false)
 	if !strings.Contains(unauth, "60") || !strings.Contains(unauth, "charmbracelet/bubbletea") {
 		t.Errorf("unauth header wrong:\n%s", unauth)
 	}
-	auth := renderHeaderPanel("charmbracelet", "bubbletea", raw, true, true, 80, "")
+	// The quota carries an "API" label so the bare number is not cryptic.
+	if !strings.Contains(unauth, "API") {
+		t.Errorf("rate-limit badge should be labeled with API:\n%s", unauth)
+	}
+	auth := renderHeaderPanel("charmbracelet", "bubbletea", raw, true, true, 80, "", false)
 	if !strings.Contains(auth, "5,000") {
 		t.Errorf("auth header should show 5,000/hr:\n%s", auth)
+	}
+}
+
+// In ASCII mode the header renders the language's short tag (e.g. "TS") instead
+// of the Nerd Font devicon glyph, so terminals without a Nerd Font stay legible.
+func TestHeaderASCIIMode(t *testing.T) {
+	raw := fixedRaw()
+	raw.Language = "TypeScript"
+
+	ascii := renderHeaderPanel("o", "r", raw, true, false, 100, "", true)
+	if !strings.Contains(ascii, languageIcons["typescript"].tag) {
+		t.Errorf("ascii header should show the TS tag:\n%s", ascii)
+	}
+	if strings.Contains(ascii, languageIcons["typescript"].glyph) {
+		t.Errorf("ascii header must not contain the Nerd Font glyph:\n%s", ascii)
+	}
+
+	glyph := renderHeaderPanel("o", "r", raw, true, false, 100, "", false)
+	if !strings.Contains(glyph, languageIcons["typescript"].glyph) {
+		t.Errorf("default header should show the devicon glyph:\n%s", glyph)
 	}
 }
 
@@ -78,7 +102,7 @@ func TestHeaderShowsMetaWhenLoaded(t *testing.T) {
 	raw.Description = "A delightful TUI framework"
 	raw.LicenseSPDX = "MIT"
 	raw.RepoAgeDays = 1200
-	out := renderHeaderPanel("charm", "bubbletea", raw, true, true, 100, "B")
+	out := renderHeaderPanel("charm", "bubbletea", raw, true, true, 100, "B", false)
 	for _, want := range []string{"delightful TUI", glyphStar, "MIT", "3.3y old"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("loaded header missing %q:\n%s", want, out)
@@ -89,7 +113,7 @@ func TestHeaderShowsMetaWhenLoaded(t *testing.T) {
 func TestHeaderHidesMetaWhenNotLoaded(t *testing.T) {
 	raw := fixedRaw()
 	raw.Description = "should not show yet"
-	out := renderHeaderPanel("charm", "bubbletea", raw, false, true, 100, "")
+	out := renderHeaderPanel("charm", "bubbletea", raw, false, true, 100, "", false)
 	if strings.Contains(out, "should not show yet") {
 		t.Errorf("header must not show description before load:\n%s", out)
 	}
@@ -102,7 +126,7 @@ func TestHeaderHidesMetaWhenNotLoaded(t *testing.T) {
 // grade is appended to the identity row once metrics are loaded.
 func TestHeaderShowsGradeWhenLoaded(t *testing.T) {
 	raw := fixedRaw()
-	out := stripANSI(renderHeaderPanel("o", "r", raw, true, false, 100, "A"))
+	out := stripANSI(renderHeaderPanel("o", "r", raw, true, false, 100, "A", false))
 	if !strings.Contains(out, "Grade A") {
 		t.Errorf("loaded header should show the composite grade:\n%s", out)
 	}
@@ -110,7 +134,7 @@ func TestHeaderShowsGradeWhenLoaded(t *testing.T) {
 
 func TestHeaderOmitsGradeWhenNotLoaded(t *testing.T) {
 	raw := fixedRaw()
-	out := stripANSI(renderHeaderPanel("o", "r", raw, false, false, 100, ""))
+	out := stripANSI(renderHeaderPanel("o", "r", raw, false, false, 100, "", false))
 	if strings.Contains(out, "Grade") {
 		t.Errorf("header must not show grade before load:\n%s", out)
 	}

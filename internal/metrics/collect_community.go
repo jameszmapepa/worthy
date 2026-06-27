@@ -83,10 +83,18 @@ func medianTTFR(
 	sem *semaphore.Weighted,
 	issues []github.Issue,
 ) (float64, error) {
-	// Pick the sample of real (non-PR) issues, preserving order.
+	// Pick the sample of real (non-PR) issues that actually have at least one
+	// comment, preserving order. The fetched issues are the newest-created; the
+	// very newest are usually still unanswered (or only bot-triaged), so sampling
+	// them blindly yielded "no issue response data" on active repos. Requiring
+	// Comments>0 biases the sample toward issues that can have a first response
+	// and avoids spending an API call per commentless issue.
+	// ceiling: still drawn from the 100 newest-created issues; a repo whose only
+	// answered issues are older than that window will under-sample. Widen the
+	// RecentIssues fetch or add an updated-sorted fetch if that becomes an issue.
 	sample := make([]github.Issue, 0, issueSampleCap)
 	for _, iss := range issues {
-		if iss.IsPullRequest() {
+		if iss.IsPullRequest() || iss.Comments == 0 {
 			continue
 		}
 		if len(sample) >= issueSampleCap {
@@ -194,55 +202,4 @@ func processOpenPulls(prs []github.PullRequest, now time.Time) (openCount int, m
 		medianAgeDays = ages[mid]
 	}
 	return openCount, medianAgeDays, staleNewcomerCount
-}
-
-// goodFirstLabelNames and helpWantedLabelNames are the canonical downcased
-// label names we match for newcomer-friendliness. Repos use both the spaced
-// and hyphenated variants interchangeably; we accept both after downcasing.
-var (
-	goodFirstLabelNames  = [2]string{"good first issue", "good-first-issue"}
-	helpWantedLabelNames = [2]string{"help wanted", "help-wanted"}
-)
-
-// countLabels counts open, non-PR issues that carry one of the canonical
-// newcomer-friendliness labels.  It derives entirely from the already-fetched
-// issues slice — zero extra API calls. Approach: the existing collectTTFR
-// fetches state=all issues (up to 100, sort=created desc); we filter for open
-// non-PR issues and match labels after downcasing the label name. Counts are
-// capped at 100 matching the page limit so callers can treat them as bounded.
-// ceiling: issues created before the 100th-most-recent are not seen; increase
-// the issues fetch or add a dedicated labelled-issues call if full coverage is
-// needed.
-func countLabels(issues []github.Issue) (goodFirst, helpWanted int) {
-	for _, iss := range issues {
-		if iss.IsPullRequest() || iss.State != "open" {
-			continue
-		}
-		var countedGF, countedHW bool
-		for _, label := range iss.Labels {
-			name := strings.ToLower(label.Name)
-			if !countedGF {
-				for _, gf := range goodFirstLabelNames {
-					if name == gf {
-						goodFirst++
-						countedGF = true
-						break
-					}
-				}
-			}
-			if !countedHW {
-				for _, hw := range helpWantedLabelNames {
-					if name == hw {
-						helpWanted++
-						countedHW = true
-						break
-					}
-				}
-			}
-			if countedGF && countedHW {
-				break
-			}
-		}
-	}
-	return min(goodFirst, 100), min(helpWanted, 100)
 }

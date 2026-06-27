@@ -55,6 +55,7 @@ type Model struct {
 	selected    int  // selected item index; meaning is view-dependent
 	expanded    bool // whether the selected item's detail panel is expanded
 	helpVisible bool // whether the keybinding help overlay is shown (C10)
+	asciiIcons  bool // render language as an ASCII tag instead of a Nerd Font glyph
 	width       int
 	height      int // terminal height from tea.WindowSizeMsg (C3)
 	loadStart   time.Time
@@ -72,6 +73,12 @@ type Option func(*Model)
 // fetch deterministic in tests. Defaults to time.Now() at New.
 func WithNow(now time.Time) Option {
 	return func(m *Model) { m.now = now }
+}
+
+// WithASCIIIcons selects the ASCII-tag language badge (e.g. "TS") instead of the
+// Nerd Font devicon glyph, for terminals without a Nerd Font installed.
+func WithASCIIIcons(ascii bool) Option {
+	return func(m *Model) { m.asciiIcons = ascii }
 }
 
 // New constructs a Model in the loading state for owner/repo.
@@ -174,8 +181,15 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		// C10: toggle keybinding help overlay.
 		m.helpVisible = !m.helpVisible
 		return m, nil
-	case "tab":
+	case "tab", "right", "l":
+		// Cycle to the next view. left/right arrows are dedicated view toggles;
+		// drill-down expand/collapse now lives on enter/esc so the arrows are
+		// free to navigate views from any view, selected or not.
 		m.view = (m.view + 1) % viewCount
+		m.resetSelection()
+		return m, nil
+	case "shift+tab", "left", "h":
+		m.view = (m.view - 1 + viewCount) % viewCount
 		m.resetSelection()
 		return m, nil
 	case "1":
@@ -209,14 +223,9 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			m.moveSelection(-1)
 		}
 		return m, nil
-	case "enter", "right":
+	case "enter":
 		if m.canSelect() {
 			m.expanded = true
-		}
-		return m, nil
-	case "left":
-		if m.canSelect() {
-			m.expanded = false
 		}
 		return m, nil
 	}

@@ -2,6 +2,7 @@ package score
 
 import (
 	"math"
+	"strings"
 	"testing"
 )
 
@@ -41,11 +42,49 @@ func TestCommitFrequency(t *testing.T) {
 		{"even count median is mean of middle two", RawMetrics{CommitsLast52Weeks: repeat(7, 8, 7, 8)}, 100.0 * 7.5 / 15},
 		{"odd count median is middle value", RawMetrics{CommitsLast52Weeks: repeat(3, 9, 6)}, 100.0 * 6 / 15},
 		{"uses last 12 weeks only", RawMetrics{CommitsLast52Weeks: append(repeat(0, 40), repeat(15, 12)...)}, 100},
+		// Fallback: no stats series but a commits-count average is available.
+		{"fallback avg scores like the series", RawMetrics{HasCommitFallback: true, CommitsPerWeekFallback: 15}, 100},
+		{"fallback avg scales linearly", RawMetrics{HasCommitFallback: true, CommitsPerWeekFallback: 7.5}, 50},
+		{"fallback avg zero -> 0", RawMetrics{HasCommitFallback: true, CommitsPerWeekFallback: 0}, 0},
+		// A present series wins over a fallback (priority order).
+		{"series preferred over fallback", RawMetrics{CommitsLast52Weeks: repeat(15, 12), HasCommitFallback: true, CommitsPerWeekFallback: 0}, 100},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			got := commitFrequency(tc.raw)
 			approx(t, got.Value, tc.want, "commit_frequency")
+		})
+	}
+}
+
+func TestCommitFrequencyRawNotes(t *testing.T) {
+	if got := commitFrequency(RawMetrics{}).Raw; got != "commit stats unavailable" {
+		t.Errorf("no-data Raw = %q; want honest unavailable note", got)
+	}
+	if got := commitFrequency(RawMetrics{HasCommitFallback: true, CommitsPerWeekFallback: 4}).Raw; !strings.Contains(got, "12wk avg") {
+		t.Errorf("fallback Raw = %q; want it to mention the 12wk avg", got)
+	}
+}
+
+func TestNewcomerSignals(t *testing.T) {
+	tests := []struct {
+		name     string
+		raw      RawMetrics
+		wantVal  float64
+		wantNote string
+	}{
+		{"unavailable -> neutral", RawMetrics{NewcomerLabelsAvailable: false}, newcomerSignalsNone, "label data unavailable"},
+		{"available open door -> 100", RawMetrics{NewcomerLabelsAvailable: true, NewcomerLabeledOpen: 5, NewcomerLabeledAvailable: 2}, newcomerSignalsAvailable, "available beginner issues"},
+		{"present but all claimed -> 60", RawMetrics{NewcomerLabelsAvailable: true, NewcomerLabeledOpen: 5, NewcomerLabeledAvailable: 0}, newcomerSignalsClaimed, "all assigned"},
+		{"no labels at all -> neutral, not F", RawMetrics{NewcomerLabelsAvailable: true, NewcomerLabeledOpen: 0}, newcomerSignalsNone, "no beginner-labelled issues"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := newcomerSignals(tc.raw)
+			approx(t, got.Value, tc.wantVal, "newcomer_signals")
+			if !strings.Contains(got.Raw, tc.wantNote) {
+				t.Errorf("Raw = %q; want to contain %q", got.Raw, tc.wantNote)
+			}
 		})
 	}
 }

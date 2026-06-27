@@ -11,7 +11,7 @@ func TestSubScoreFormula(t *testing.T) {
 	r := Evaluate(healthyRaw())
 
 	want := map[string]string{
-		"commit_frequency":  "min(100, median12/15 × 100)",
+		"commit_frequency":  "min(100, commits-per-week/15 × 100)",
 		"commit_recency":    "max(0, 100 − days/365 × 100)",
 		"release_cadence":   "0 releases → 40; else linear 90→730d",
 		"issue_close_ratio": "closed / (closed+open), 90d cohort",

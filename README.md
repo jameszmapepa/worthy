@@ -111,7 +111,14 @@ If the repository is made public, the `GOPRIVATE` step is unnecessary and
 repohealth owner/repo
 repohealth github.com/owner/repo
 repohealth https://github.com/owner/repo
+repohealth --ascii owner/repo          # ASCII language tags instead of Nerd Font icons
 ```
+
+The header shows the primary language as a Nerd Font devicon (in the language's
+brand color). If your terminal is **not** using a Nerd Font, the glyph will show
+as a box — pass `--ascii` (or set `REPO_HEALTH_ASCII=1`) to render a short tag
+like `TS` / `Go` / `Rs` instead. A program cannot detect font availability, so
+this is an explicit choice.
 
 ### Views and keys
 
@@ -119,11 +126,11 @@ The TUI opens on the scorecard. Switch views and interact with:
 
 | Key | Action |
 |---|---|
-| `tab` | cycle views |
+| `←` `→` or `tab` / `shift+tab` | switch view (previous / next) |
 | `1` / `2` / `3` / `4` | scorecard / questions / gauges / explain |
 | `↑` `↓` or `j` `k` | move the selection (scorecard, questions, gauges) |
-| `enter` / `→` | open the drill-down (scorecard, questions, gauges) |
-| `esc` / `←` | close the drill-down (or quit when nothing is open) |
+| `enter` | open the drill-down (scorecard, questions, gauges) |
+| `esc` | close the drill-down (or quit when nothing is open) |
 | `r` | re-fetch and re-score |
 | `?` | toggle the keybinding help overlay |
 | `q` · `ctrl-c` | quit |

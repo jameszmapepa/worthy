@@ -133,3 +133,39 @@ WARNING (stale comments + 2 missing edge tests — all addressed before commit).
 
 Open follow-on: none for drill-down. (Earlier deferrals still open: `--json`/
 `--plain`, pagination, caching, gate-inspector interactivity.)
+
+## TUI enhancements + data-availability fixes (in progress)
+
+### A. Navigation
+- [x] Left/right arrows cycle views (prev/next); expand→enter, collapse→esc
+- [x] Update help overlay keybinding rows
+
+### B. Header / meta row
+- [x] Label the rate-limit badge ("API 60/hr")
+- [x] Colorize star/fork/watcher glyphs + counts (no longer monochrome)
+- [x] Replace language name with Nerd Font devicon (brand color); dot+name fallback
+
+### C. Data availability (investigated — root causes confirmed)
+- [x] Commit frequency: /commits Link-header fallback when stats endpoint empty
+- [x] Issue responsiveness: sample issues with Comments>0
+- [x] Newcomer signals: accurate repo-wide count via Search API; rethink scoring
+      (available→100, present-but-claimed→60, none→50, missing→50)
+
+### Gates
+- [x] go test ./... -race green; go vet; gofmt; coverage ≥87%/pkg; benchmarks run
+- [x] senior-engineer review: WARNING → 1 MEDIUM (newcomer second-call ok=true
+      while partial set) FIXED; re-verified
+- [x] tester: VERIFIED, coverage cmd 87.8 / github 90.4 / metrics 95.6 / score 97.8
+      / tui 94.3 (total 94.7%); gaps filled
+
+### D. ASCII fallback for language icons (done)
+- [x] `--ascii` flag + `REPO_HEALTH_ASCII` env → short brand-colored tags (TS/Go/Rs…)
+      instead of Nerd Font glyphs (runtime font detection is impossible, so it's an
+      explicit toggle). Threaded Model.asciiIcons → renderHeaderPanel → metaRow →
+      languageBadge. README + help/footer updated.
+
+### Notes / ceilings
+- Nerd Font glyphs need a patched terminal font; brand color always carries signal,
+  unmapped languages keep their name (dot fallback). `--ascii` switches to tags.
+- Newcomer Search API uses a separate rate-limit budget (good for the unauth 60/hr
+  core path). Adds ~3 calls per scan (2 search + up to 1 commits fallback).

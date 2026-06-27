@@ -339,6 +339,10 @@ func countBaseRoutes(now time.Time) map[string]fixture {
 		"/repos/acme/widget/pulls":                 {200, `[]`},
 		"/repos/acme/widget/issues":                {200, `[]`},
 		"/repos/acme/widget/issues/comments":       {200, `[]`},
+		// Commit-frequency fallback (hit when commit_activity is empty) and the
+		// newcomer-label Search API: empty/zero so the base routes stay healthy.
+		"/repos/acme/widget/commits": {200, `[]`},
+		"/search/issues":             {200, `{"total_count":0}`},
 	}
 }
 

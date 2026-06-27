@@ -20,10 +20,11 @@ func renderHelp(width int) string {
 	boxW := clampWidth(width-4, 30, 60)
 
 	rows := []struct{ key, desc string }{
-		{"tab / 1-4", "switch view"},
+		{"← →  tab", "switch view (prev / next)"},
+		{"1-4", "jump to view"},
 		{"↑ ↓  j k", "move selection"},
-		{"enter / →", "drill down (expand)"},
-		{"← / esc", "collapse · quit when collapsed"},
+		{"enter", "drill down (expand)"},
+		{"esc", "collapse · quit when collapsed"},
 		{"r", "refresh (re-fetch repo)"},
 		{"?", "toggle this help"},
 		{"q / ctrl+c", "quit"},

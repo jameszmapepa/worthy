@@ -87,6 +87,12 @@ func fullRoutesHandler(now time.Time, sleep time.Duration) http.HandlerFunc {
 			_, _ = w.Write([]byte(issue11Comments))
 		case path == "/repos/acme/widget/issues/12/comments":
 			_, _ = w.Write([]byte(`[]`))
+		case path == "/search/issues":
+			if strings.Contains(q.Get("q"), "no:assignee") {
+				_, _ = w.Write([]byte(`{"total_count":1}`))
+			} else {
+				_, _ = w.Write([]byte(`{"total_count":2}`))
+			}
 		default:
 			_, _ = w.Write([]byte(`[]`))
 		}
@@ -188,6 +194,8 @@ func TestCollect_PartialOrderDeterministic(t *testing.T) {
 			w.WriteHeader(http.StatusInternalServerError)
 		case path == "/repos/acme/widget/issues" && q.Get("state") == "all":
 			w.WriteHeader(http.StatusInternalServerError)
+		case path == "/search/issues":
+			_, _ = w.Write([]byte(`{"total_count":0}`))
 		default:
 			_, _ = w.Write([]byte(`[]`))
 		}

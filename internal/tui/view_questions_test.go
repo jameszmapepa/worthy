@@ -199,9 +199,9 @@ func TestQuestionsDrillExpandCollapse(t *testing.T) {
 	if !m.expanded {
 		t.Error("enter should expand")
 	}
-	m = press(m, "left")
+	m = press(m, "esc")
 	if m.expanded {
-		t.Error("left should collapse")
+		t.Error("esc should collapse")
 	}
 }
 

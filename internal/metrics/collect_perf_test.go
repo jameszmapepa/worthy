@@ -4,7 +4,6 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
-	"reflect"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -44,10 +43,14 @@ func TestPerf_RetryBudgetBounded(t *testing.T) {
 		t.Errorf("commit_activity requests = %d; want %d (maxRetries+1)", got, wantHits)
 	}
 
-	// Only the unfinished stat degrades; everything else stayed healthy.
-	want := []string{"commit_activity"}
-	if !reflect.DeepEqual(raw.Partial, want) {
-		t.Errorf("raw.Partial = %v; want %v (graceful degradation of the one stuck stat)", raw.Partial, want)
+	// The stuck stat no longer degrades: after exhausting the bounded retry
+	// budget, collection falls back to the /commits count (served by
+	// fullRoutesHandler), so commit data is recovered rather than lost.
+	if len(raw.Partial) != 0 {
+		t.Errorf("raw.Partial = %v; want empty (commit fallback rescued the stuck stat)", raw.Partial)
+	}
+	if !raw.HasCommitFallback {
+		t.Error("HasCommitFallback = false; want true (fallback used when the stat is stuck)")
 	}
 }
 

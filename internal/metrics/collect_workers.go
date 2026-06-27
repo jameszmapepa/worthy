@@ -2,6 +2,7 @@ package metrics
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"golang.org/x/sync/semaphore"
@@ -31,8 +32,22 @@ type contributorResult struct {
 }
 
 type commitResult struct {
-	weekly  []int
-	partial string
+	weekly []int
+	// fallback average weekly commits over the last 12 weeks, used only when the
+	// stats series (weekly) is unavailable. hasFallback distinguishes a real 0
+	// from "fallback not attempted / failed".
+	weeklyAvg   float64
+	hasFallback bool
+	partial     string
+}
+
+// newcomerLabelResult carries repo-wide counts of open beginner-labelled issues
+// from the Search API. ok reports whether the search completed.
+type newcomerLabelResult struct {
+	open      int
+	available int
+	ok        bool
+	partial   string
 }
 
 type releaseResult struct {
@@ -61,10 +76,7 @@ type ttfrResult struct {
 	median             float64
 	recentIssuesClosed int
 	recentIssuesOpen   int
-	// A3: derived from the same issues slice — zero extra API calls.
-	goodFirstIssues  int
-	helpWantedIssues int
-	partial          string
+	partial            string
 }
 
 // openPullsResult carries the A2 open-PR ghosting metrics.
@@ -134,24 +146,97 @@ func collectContributors(gctx context.Context, c *github.Client, owner, repo str
 	return nil
 }
 
-func collectCommits(gctx context.Context, c *github.Client, owner, repo string, sem *semaphore.Weighted, out *commitResult) error {
+// commitFallbackWeeks is the look-back window (in weeks) for the commit-count
+// fallback, matching the 12-week median window used by the commit_frequency
+// sub-score.
+const commitFallbackWeeks = 12
+
+func collectCommits(gctx context.Context, c *github.Client, owner, repo string, sem *semaphore.Weighted, now time.Time, out *commitResult) error {
 	var weeks []github.CommitActivityWeek
-	err := withCall(gctx, sem, func() error {
+	statsErr := withCall(gctx, sem, func() error {
 		w, e := c.CommitActivity(gctx, owner, repo)
 		weeks = w
 		return e
 	})
-	if err != nil {
-		if isContextError(err) {
-			return err
+	if statsErr != nil && isContextError(statsErr) {
+		return statsErr
+	}
+	if statsErr == nil && len(weeks) > 0 {
+		out.weekly = make([]int, len(weeks))
+		for i, w := range weeks {
+			out.weekly[i] = w.Total
 		}
+		return nil
+	}
+
+	// Stats unavailable (empty body for very large repos, or 202 past the retry
+	// budget). Fall back to counting commits over the last 12 weeks via the
+	// /commits endpoint, which has no such limit.
+	since := now.Add(-commitFallbackWeeks * 7 * 24 * time.Hour)
+	var count int
+	fbErr := withCall(gctx, sem, func() error {
+		n, e := c.CommitCountSince(gctx, owner, repo, since)
+		count = n
+		return e
+	})
+	if fbErr != nil {
+		if isContextError(fbErr) {
+			return fbErr
+		}
+		// Both the stats endpoint and the fallback failed: record the
+		// degradation so the UI flags missing commit data.
 		out.partial = "commit_activity"
 		return nil
 	}
-	out.weekly = make([]int, len(weeks))
-	for i, w := range weeks {
-		out.weekly[i] = w.Total
+	out.weeklyAvg = float64(count) / commitFallbackWeeks
+	out.hasFallback = true
+	return nil
+}
+
+// collectNewcomerLabels counts repo-wide open issues carrying a newcomer label
+// ("good first issue"/"help wanted", either spelling) and the unassigned subset,
+// via the Search API. Search OR-combines the label variants in a single query,
+// and uses a separate rate-limit budget from the core REST calls.
+func collectNewcomerLabels(gctx context.Context, c *github.Client, owner, repo string, sem *semaphore.Weighted, out *newcomerLabelResult) error {
+	base := fmt.Sprintf(
+		`repo:%s/%s is:issue is:open label:"good first issue","good-first-issue","help wanted","help-wanted"`,
+		owner, repo)
+
+	var open int
+	openErr := withCall(gctx, sem, func() error {
+		n, e := c.SearchIssueCount(gctx, base)
+		open = n
+		return e
+	})
+	if openErr != nil {
+		if isContextError(openErr) {
+			return openErr
+		}
+		out.partial = "newcomer_labels"
+		return nil
 	}
+
+	var available int
+	availErr := withCall(gctx, sem, func() error {
+		n, e := c.SearchIssueCount(gctx, base+" no:assignee")
+		available = n
+		return e
+	})
+	if availErr != nil {
+		if isContextError(availErr) {
+			return availErr
+		}
+		// Availability is unknown: we cannot tell "all claimed" from "open door".
+		// Record the degradation and leave ok=false so the scorer falls back to
+		// its neutral "label data unavailable" branch rather than asserting a
+		// claimed/available split we did not actually measure.
+		out.partial = "newcomer_labels"
+		out.open = open
+		return nil
+	}
+	out.open = open
+	out.available = available
+	out.ok = true
 	return nil
 }
 
@@ -239,10 +324,10 @@ func collectTTFR(gctx context.Context, c *github.Client, owner, repo string, sem
 		return err // context error only
 	}
 	out.median = median
-	// Derive the 90-day issue creation cohort and newcomer label counts from
-	// the same slice — no extra API calls.
+	// Derive the 90-day issue creation cohort from the same slice — no extra
+	// API call. Newcomer-label counts now come from the Search API
+	// (collectNewcomerLabels) so curated issues outside this window are seen.
 	out.recentIssuesClosed, out.recentIssuesOpen = issueCreationCohort(issues, now)
-	out.goodFirstIssues, out.helpWantedIssues = countLabels(issues)
 	return nil
 }
 

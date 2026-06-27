@@ -40,7 +40,7 @@ func (c ConfidenceLevel) String() string {
 // busFactor after B5) are omitted.
 //
 // Counted signals and their neutral condition:
-//   - commit_frequency    : CommitsLast52Weeks empty (GitHub stats recomputing)
+//   - commit_frequency    : no stats series AND no commits-count fallback
 //   - issue_responsiveness: MedianIssueFirstResponseHours ≤ 0
 //   - pr_acceptance       : MergedPRs + ClosedUnmergedPRs == 0
 //   - newcomer_merge_rate : NewcomerPRsMerged + NewcomerPRsClosedUnmerged == 0
@@ -49,7 +49,7 @@ func (c ConfidenceLevel) String() string {
 //   - pr_responsiveness   : OpenPRCount == 0
 func neutralDefaultCount(raw RawMetrics) int {
 	n := 0
-	if len(raw.CommitsLast52Weeks) == 0 {
+	if len(raw.CommitsLast52Weeks) == 0 && !raw.HasCommitFallback {
 		n++
 	}
 	if raw.MedianIssueFirstResponseHours <= 0 {

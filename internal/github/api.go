@@ -2,9 +2,13 @@ package github
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
+	"time"
 )
 
 // pageSize is GitHub's maximum items-per-page for list endpoints.
@@ -56,6 +60,69 @@ func (c *Client) CommitActivity(ctx context.Context, owner, repo string) ([]Comm
 		return nil, err
 	}
 	return w, nil
+}
+
+// CommitCountSince returns the number of commits on the default branch since the
+// given time. It is the fallback for CommitActivity: the /stats/commit_activity
+// endpoint returns an empty body for very large repositories (GitHub declines to
+// compute the expensive statistic) or stays in its 202-recompute state past our
+// retry budget. The /commits list endpoint has no such limit, and the
+// per_page=1 Link-header trick yields the total with a single request: the
+// rel="last" page number equals the commit count because each page holds one
+// item. Repos with no Link header have at most one matching commit (len of the
+// returned slice).
+func (c *Client) CommitCountSince(ctx context.Context, owner, repo string, since time.Time) (int, error) {
+	var sink []json.RawMessage
+	path := fmt.Sprintf("/repos/%s/%s/commits?per_page=1&since=%s",
+		url.PathEscape(owner), url.PathEscape(repo), url.QueryEscape(since.UTC().Format(time.RFC3339)))
+	header, err := c.getWithHeader(ctx, path, &sink)
+	if err != nil {
+		return 0, err
+	}
+	if last := lastPageFromLink(header); last > 0 {
+		return last, nil
+	}
+	return len(sink), nil
+}
+
+// SearchIssueCount returns the total_count for a GitHub issue-search query. Used
+// for accurate repo-wide label counts (e.g. open "good first issue" issues) that
+// the 100-newest-issues listing window cannot see. Search has its own,
+// generous-for-interactive-use rate limit (separate from the core REST budget),
+// so this does not consume the 60/hr anonymous core allowance.
+func (c *Client) SearchIssueCount(ctx context.Context, query string) (int, error) {
+	var r searchResult
+	path := "/search/issues?per_page=1&q=" + url.QueryEscape(query)
+	if err := c.get(ctx, path, &r); err != nil {
+		return 0, err
+	}
+	return r.TotalCount, nil
+}
+
+// lastPageFromLink parses the rel="last" page number out of a GitHub Link
+// header, returning 0 when absent (single-page or no results). It matches the
+// "page=" query key only at a query delimiter (? or &) so it never picks up the
+// tail of "per_page=".
+func lastPageFromLink(h http.Header) int {
+	for _, seg := range strings.Split(h.Get("Link"), ",") {
+		if !strings.Contains(seg, `rel="last"`) {
+			continue
+		}
+		for _, key := range []string{"?page=", "&page="} {
+			i := strings.Index(seg, key)
+			if i < 0 {
+				continue
+			}
+			num := seg[i+len(key):]
+			if end := strings.IndexAny(num, "&>"); end >= 0 {
+				num = num[:end]
+			}
+			if n, err := strconv.Atoi(num); err == nil {
+				return n
+			}
+		}
+	}
+	return 0
 }
 
 // Releases fetches up to limit recent releases (most recent first).

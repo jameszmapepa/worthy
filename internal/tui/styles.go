@@ -27,6 +27,14 @@ var (
 	colorCatSecurity  = lipgloss.Color("#ff79c6") // pink
 )
 
+// Meta-row stat icon hues so the star/fork/watcher row reads as colored icons
+// rather than a flat muted line.
+var (
+	colorStar    = lipgloss.Color("#f1fa8c") // gold (stargazers)
+	colorFork    = lipgloss.Color("#bd93f9") // purple (forks)
+	colorWatcher = lipgloss.Color("#8be9fd") // cyan (watchers)
+)
+
 // titledPanel wraps body in a rounded border with a small title label sitting
 // on the top edge. Used to compose the multi-panel dashboard views.
 func titledPanel(title, body string, border color.Color) string {

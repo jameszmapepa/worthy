@@ -101,13 +101,47 @@ func TestDrillExpandCollapse(t *testing.T) {
 	if !m.expanded {
 		t.Error("enter should expand")
 	}
-	m = press(m, "left")
+	m = press(m, "esc")
 	if m.expanded {
-		t.Error("left should collapse")
+		t.Error("esc should collapse")
 	}
-	m = press(m, "right")
+	m = press(m, "enter")
 	if !m.expanded {
-		t.Error("right should expand")
+		t.Error("enter should expand again")
+	}
+}
+
+// Left/right are dedicated view toggles (no longer expand/collapse). They cycle
+// through the views in both directions, wrapping at the ends.
+func TestArrowsCycleViews(t *testing.T) {
+	m := loadedModel(t) // starts on view 0
+	m = press(m, "right")
+	if m.view != 1 {
+		t.Errorf("right: view = %d; want 1", m.view)
+	}
+	m = press(m, "left")
+	if m.view != 0 {
+		t.Errorf("left: view = %d; want 0", m.view)
+	}
+	m = press(m, "left") // wrap backwards from 0
+	if m.view != viewCount-1 {
+		t.Errorf("left wrap: view = %d; want %d", m.view, viewCount-1)
+	}
+	m = press(m, "right") // wrap forwards
+	if m.view != 0 {
+		t.Errorf("right wrap: view = %d; want 0", m.view)
+	}
+}
+
+// Switching views with the arrows resets any open drill-down so a stale
+// selection from another view never carries over.
+func TestArrowSwitchResetsSelection(t *testing.T) {
+	m := loadedModel(t)
+	m = press(m, "j")
+	m = press(m, "enter") // selected=1, expanded on view 0
+	m = press(m, "right") // -> view 1
+	if m.selected != 0 || m.expanded {
+		t.Errorf("after right: selected=%d expanded=%v; want 0/false", m.selected, m.expanded)
 	}
 }
 

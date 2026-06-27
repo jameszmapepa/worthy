@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"image/color"
 	"strings"
 
 	"charm.land/lipgloss/v2"
@@ -26,7 +27,7 @@ var headerPanelStyle = lipgloss.NewStyle().
 // is always present; the description, meta row, and composite grade (C1) appear
 // once metrics are loaded. grade is the non-empty letter grade from the loaded
 // Report; pass "" when the report is not yet available.
-func renderHeaderPanel(owner, repo string, raw score.RawMetrics, loaded, authenticated bool, width int, grade string) string {
+func renderHeaderPanel(owner, repo string, raw score.RawMetrics, loaded, authenticated bool, width int, grade string, ascii bool) string {
 	// lipgloss Style.Width(w) sets the box width INCLUDING padding; the border
 	// adds 2 more cells outside it. So for a panel of total terminal width
 	// `width`, the box is width-2 and the usable text inside is width-2-2.
@@ -50,7 +51,7 @@ func renderHeaderPanel(owner, repo string, raw score.RawMetrics, loaded, authent
 		if desc := strings.TrimSpace(raw.Description); desc != "" {
 			rows = append(rows, mutedStyle.Render(truncate(desc, textW)))
 		}
-		rows = append(rows, metaRow(raw))
+		rows = append(rows, metaRow(raw, ascii))
 	}
 
 	body := strings.Join(rows, "\n")
@@ -58,26 +59,37 @@ func renderHeaderPanel(owner, repo string, raw score.RawMetrics, loaded, authent
 }
 
 // metaRow renders the star/fork/watcher counts, language, license, and age.
-func metaRow(raw score.RawMetrics) string {
+// Each stat glyph carries its own color so the row reads as colored icons
+// rather than a flat monochrome line; counts use the bright foreground while
+// the trailing license/age stay muted as secondary metadata.
+func metaRow(raw score.RawMetrics, ascii bool) string {
+	stat := func(glyph string, glyphColor color.Color, n int) string {
+		icon := lipgloss.NewStyle().Foreground(glyphColor).Render(glyph)
+		return icon + " " + labelStyle.Render(humanizeCount(n))
+	}
 	parts := []string{
-		fmt.Sprintf("%s %s", glyphStar, humanizeCount(raw.Stars)),
-		fmt.Sprintf("%s %s", glyphFork, humanizeCount(raw.Forks)),
-		fmt.Sprintf("%s %s", glyphWatcher, humanizeCount(raw.Watchers)),
+		stat(glyphStar, colorStar, raw.Stars),
+		stat(glyphFork, colorFork, raw.Forks),
+		stat(glyphWatcher, colorWatcher, raw.Watchers),
 	}
 	if raw.Language != "" {
-		parts = append(parts, raw.Language)
+		parts = append(parts, languageBadge(raw.Language, ascii))
 	}
-	parts = append(parts, licenseLabel(raw.LicenseSPDX))
-	parts = append(parts, humanizeAge(raw.RepoAgeDays))
-	return mutedStyle.Render(strings.Join(parts, "   "))
+	parts = append(parts, mutedStyle.Render(licenseLabel(raw.LicenseSPDX)))
+	parts = append(parts, mutedStyle.Render(humanizeAge(raw.RepoAgeDays)))
+	return strings.Join(parts, mutedStyle.Render("   "))
 }
 
-// rateLimitBadge renders a color-coded rate-limit indicator.
+// rateLimitBadge renders a labeled, color-coded GitHub API rate-limit
+// indicator. The "API" prefix tells the user what the number means; the rate
+// itself is colored by how generous it is (green when authenticated, amber on
+// the anonymous 60/hr ceiling).
 func rateLimitBadge(authenticated bool) string {
+	rate, rateColor := "60/hr", colorAmber
 	if authenticated {
-		return lipgloss.NewStyle().Foreground(colorGreen).Render("5,000/hr")
+		rate, rateColor = "5,000/hr", colorGreen
 	}
-	return lipgloss.NewStyle().Foreground(colorAmber).Render("60/hr")
+	return mutedStyle.Render("API ") + lipgloss.NewStyle().Foreground(rateColor).Render(rate)
 }
 
 // licenseLabel returns a display label for a license SPDX id.

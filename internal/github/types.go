@@ -138,3 +138,9 @@ type CommitActivityWeek struct {
 	Total int   `json:"total"`
 	Week  int64 `json:"week"`
 }
+
+// searchResult is the envelope for GET /search/issues; only the total_count is
+// read (the matching items themselves are not needed for a count).
+type searchResult struct {
+	TotalCount int `json:"total_count"`
+}

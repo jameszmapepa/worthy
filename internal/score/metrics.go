@@ -21,8 +21,15 @@ package score
 type RawMetrics struct {
 	// Activity inputs.
 	CommitsLast52Weeks []int // weekly repository-wide commit counts, oldest..newest
-	DaysSinceLastPush  int   // recency of the last push to the default branch
-	RepoAgeDays        int   // age of the repository (created_at proxy)
+	// Commit-frequency fallback: when the /stats/commit_activity endpoint returns
+	// no data (empty for very large repos, or 202 past the retry budget), the
+	// collector counts commits over the last 12 weeks via the /commits endpoint
+	// and records the average here. HasCommitFallback distinguishes "fallback
+	// succeeded, use CommitsPerWeekFallback" from "no commit data at all".
+	CommitsPerWeekFallback float64
+	HasCommitFallback      bool
+	DaysSinceLastPush      int // recency of the last push to the default branch
+	RepoAgeDays            int // age of the repository (created_at proxy)
 	// B6: Despite their names, MergedPRs and ClosedUnmergedPRs are NOT
 	// all-time totals. The collector fetches the most recently-updated 100
 	// closed pull requests (one API page, state=closed, sort=updated-desc,
@@ -79,10 +86,16 @@ type RawMetrics struct {
 	MedianOpenPRAgeDays  float64 // median age in days of open PRs; 0 = no open PRs
 	StaleNewcomerOpenPRs int     // open newcomer PRs opened >30 days ago
 
-	// Newcomer-friendliness (A3): derived from already-fetched issue data at
-	// zero extra API cost; counts are capped at 100.
-	GoodFirstIssues  int // open non-PR issues labelled "good first issue" or "good-first-issue"
-	HelpWantedIssues int // open non-PR issues labelled "help wanted" or "help-wanted"
+	// Newcomer-friendliness: repo-wide counts of OPEN issues labelled
+	// "good first issue"/"help wanted" (either spelling), via the Search API so
+	// curated entry points that fall outside the 100-newest-issues window are
+	// still seen. NewcomerLabeledAvailable is the unassigned subset (a labelled
+	// issue someone has already claimed is not an open door for a newcomer).
+	// NewcomerLabelsAvailable reports whether the search succeeded, so the score
+	// can treat "no labels" (neutral) differently from "data unavailable".
+	NewcomerLabeledOpen      int  // open issues with a newcomer label
+	NewcomerLabeledAvailable int  // unassigned subset of NewcomerLabeledOpen
+	NewcomerLabelsAvailable  bool // the label search completed successfully
 
 	// Vanity / sanity inputs.
 	Stars    int  // stargazers
