@@ -213,17 +213,16 @@ func TestGovernanceDocs(t *testing.T) {
 	// standalone `license` sub-score) to avoid double-counting it in Community.
 	// Remaining doc weights re-normalize to README .40 / CONTRIB .35 / CoC .25.
 	tests := []struct {
-		name                      string
-		readme, contrib, coc, lic bool
-		want                      float64
+		name                 string
+		readme, contrib, coc bool
+		want                 float64
 	}{
-		{"none -> 0", false, false, false, false, 0},
-		{"all docs -> 100", true, true, true, true, 100},
-		{"readme only -> 40", true, false, false, false, 40},
-		{"license does not contribute -> 0", false, false, false, true, 0},
-		{"coc only -> 25", false, false, true, false, 25},
-		{"contributing only -> 35", false, true, false, false, 35},
-		{"readme + coc -> 65 (additive, not overwritten)", true, false, true, false, 65},
+		{"none -> 0", false, false, false, 0},
+		{"all docs -> 100", true, true, true, 100},
+		{"readme only -> 40", true, false, false, 40},
+		{"coc only -> 25", false, false, true, 25},
+		{"contributing only -> 35", false, true, false, 35},
+		{"readme + coc -> 65 (additive, not overwritten)", true, false, true, 65},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -231,42 +230,15 @@ func TestGovernanceDocs(t *testing.T) {
 				HasReadme:        tc.readme,
 				HasContributing:  tc.contrib,
 				HasCodeOfConduct: tc.coc,
-				HasLicense:       tc.lic,
 			})
 			approx(t, got.Value, tc.want, "governance_docs")
 		})
 	}
 }
 
-func TestBusFactor(t *testing.T) {
-	tests := []struct {
-		name  string
-		share float64
-		count int
-		want  float64
-	}{
-		{"no contributor data -> 50 (neutral)", 0, 0, 50},
-		{"well distributed -> 100", 0.3, 20, 100},
-		{"single dominant author -> 0", 1.0, 1, 0},
-		{"gate-extreme 0.9 share / 1 contributor", 0.9, 1, 10},
-		{"sub-gate fragile 0.75 share / 3 contributors", 0.75, 3, 45},
-		{"moderate 0.5 share / 4 contributors", 0.5, 4, 80},
-		// Isolate each clamp independently (pin them one at a time).
-		{"concentration clamps at ceiling: low share, mid pool", 0.2, 3, 80},
-		{"negative share clamps to full concentration", -0.5, 3, 80},
-		{"over-1 share floors concentration to 0", 1.5, 5, 40},
-		{"pool clamps at ceiling: mid share, huge pool", 0.7, 100, 70},
-	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			got := busFactor(RawMetrics{
-				TopContributorRecentShare: tc.share,
-				ContributorCount:          tc.count,
-			})
-			approx(t, got.Value, tc.want, "bus_factor")
-		})
-	}
-}
+// TestBusFactor was deleted: the busFactor(raw RawMetrics) SubScore function was
+// removed in B5. Gate behaviour is now covered by TestBusFactorGateCapsMaintenedQuestion
+// in composite_test.go; the metrics-layer busFactor has its own tests in internal/metrics.
 
 func TestLicense(t *testing.T) {
 	tests := []struct {
@@ -339,6 +311,73 @@ func TestWorkflowSafety(t *testing.T) {
 				WorkflowsFetched:      tc.fetched,
 			})
 			approx(t, got.Value, tc.want, "workflow_safety")
+		})
+	}
+}
+
+func TestPRResponsiveness(t *testing.T) {
+	// B2 regression: prResponsiveness must return neutral 50 when there are no
+	// open PRs (absent-signal convention), and must score based on median age
+	// and stale-newcomer count when open PRs exist.
+	tests := []struct {
+		name        string
+		openCount   int
+		medianDays  float64
+		staleNcomer int
+		wantExact   *float64 // non-nil → exact match via approx
+		wantMin     float64  // for range checks
+		wantMax     float64
+	}{
+		{
+			name:        "no open PRs -> neutral 50",
+			openCount:   0,
+			medianDays:  0,
+			staleNcomer: 0,
+			wantExact:   func() *float64 { v := 50.0; return &v }(),
+		},
+		{
+			name:        "fresh PRs, no stale newcomers -> high score",
+			openCount:   3,
+			medianDays:  7,                                           // <= ageLo=14 -> freshness=100
+			staleNcomer: 0,                                           // staleScore=100
+			wantExact:   func() *float64 { v := 100.0; return &v }(), // 0.6*100+0.4*100=100
+		},
+		{
+			name:        "very stale PRs, max stale newcomers -> low score",
+			openCount:   5,
+			medianDays:  180, // >= ageHi=180 -> freshness=0
+			staleNcomer: 5,   // >= maxStale=5 -> staleScore=0
+			wantExact:   func() *float64 { v := 0.0; return &v }(),
+		},
+		{
+			name:        "mid-range: blended score",
+			openCount:   4,
+			medianDays:  97,   // linearDown(97,14,180) = 100*(1-(97-14)/166) ≈ 50
+			staleNcomer: 2,    // (5-2)/5*100 = 60
+			wantMin:     40.0, // 0.6*50 + 0.4*60 ≈ 54 — accept ±14 for float rounding
+			wantMax:     68.0,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			raw := RawMetrics{
+				OpenPRCount:          tc.openCount,
+				MedianOpenPRAgeDays:  tc.medianDays,
+				StaleNewcomerOpenPRs: tc.staleNcomer,
+			}
+			got := prResponsiveness(raw)
+			if got.Key != "pr_responsiveness" {
+				t.Errorf("Key = %q, want pr_responsiveness", got.Key)
+			}
+			if tc.wantExact != nil {
+				approx(t, got.Value, *tc.wantExact, "pr_responsiveness value")
+			} else {
+				if got.Value < tc.wantMin || got.Value > tc.wantMax {
+					t.Errorf("pr_responsiveness value = %.2f; want [%.1f, %.1f]",
+						got.Value, tc.wantMin, tc.wantMax)
+				}
+			}
 		})
 	}
 }

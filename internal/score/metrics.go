@@ -20,13 +20,19 @@ package score
 // where the spec calls for it (see score.go).
 type RawMetrics struct {
 	// Activity inputs.
-	CommitsLast52Weeks   []int // weekly repository-wide commit counts, oldest..newest
-	DaysSinceLastPush    int   // recency of the last push to the default branch
-	RepoAgeDays          int   // age of the repository (created_at proxy)
-	MergedPRs            int   // merged pull requests (all-time; used by pr_acceptance)
-	ClosedUnmergedPRs    int   // pull requests closed without merging (all-time; used by pr_acceptance)
-	ReleaseCount         int   // published releases (excludes draft/prerelease)
-	DaysSinceLastRelease int   // recency of the most recent published release
+	CommitsLast52Weeks []int // weekly repository-wide commit counts, oldest..newest
+	DaysSinceLastPush  int   // recency of the last push to the default branch
+	RepoAgeDays        int   // age of the repository (created_at proxy)
+	// B6: Despite their names, MergedPRs and ClosedUnmergedPRs are NOT
+	// all-time totals. The collector fetches the most recently-updated 100
+	// closed pull requests (one API page, state=closed, sort=updated-desc,
+	// per_page=100). "No closed PRs" therefore means "no recently-updated
+	// closed PRs in that page", not "no PRs ever closed". See
+	// metrics.Collect → collectClosedPulls.
+	MergedPRs            int // merged PRs in the most recently-updated 100 closed PRs
+	ClosedUnmergedPRs    int // closed-without-merging PRs in the same page
+	ReleaseCount         int // published releases (excludes draft/prerelease)
+	DaysSinceLastRelease int // recency of the most recent published release
 
 	// Recent 90-day creation cohort counts (zero = neutral no-data via ratioScore).
 	// Source: non-PR issues with CreatedAt >= now-90d, derived from the existing
@@ -46,13 +52,9 @@ type RawMetrics struct {
 	TopContributorRecentShare     float64 // top login's fraction of last-12-week commits (0..1)
 	ContributorCount              int     // contributors with >0 recent commits
 
-	HasReadme        bool // README present
-	HasContributing  bool // CONTRIBUTING present
-	HasCodeOfConduct bool // CODE_OF_CONDUCT present
-	HasLicense       bool // LICENSE file present (community profile)
-	// ceiling: no longer scored — governance_docs dropped LICENSE to avoid
-	// double-counting it against the standalone license sub-score (LicenseSPDX).
-	// Still collected; remove from RawMetrics + collect.go in a later cleanup.
+	HasReadme         bool   // README present
+	HasContributing   bool   // CONTRIBUTING present
+	HasCodeOfConduct  bool   // CODE_OF_CONDUCT present
 	HasSecurityPolicy bool   // SECURITY policy present
 	HealthPercentage  int    // GitHub community-profile presence-only score (0..100)
 	LicenseSPDX       string // SPDX id; "" or "NOASSERTION" means no recognized license
@@ -70,10 +72,23 @@ type RawMetrics struct {
 	// with a richer status enum.
 	WorkflowsFetched bool
 
+	// Open PR ghosting (A2): signals whether maintainers leave newcomer PRs
+	// open indefinitely. Collected from the first 100 open PRs (page cap);
+	// zero values are the neutral no-data case.
+	OpenPRCount          int     // total open PRs at collection time (up to 100)
+	MedianOpenPRAgeDays  float64 // median age in days of open PRs; 0 = no open PRs
+	StaleNewcomerOpenPRs int     // open newcomer PRs opened >30 days ago
+
+	// Newcomer-friendliness (A3): derived from already-fetched issue data at
+	// zero extra API cost; counts are capped at 100.
+	GoodFirstIssues  int // open non-PR issues labelled "good first issue" or "good-first-issue"
+	HelpWantedIssues int // open non-PR issues labelled "help wanted" or "help-wanted"
+
 	// Vanity / sanity inputs.
-	Stars    int // stargazers
-	Forks    int // forks
-	Watchers int // true watchers (subscribers), not the stars alias
+	Stars    int  // stargazers
+	Forks    int  // forks
+	Watchers int  // true watchers (subscribers), not the stars alias
+	Fork     bool // repository is a fork (A4)
 
 	// Dead-repo flags.
 	Archived bool // repository is archived (read-only)

@@ -87,43 +87,6 @@ func prBacklog(raw RawMetrics) SubScore {
 		fmt.Sprintf("%d merged / %d open (90d)", raw.RecentPRsMerged, raw.RecentPRsOpen))
 }
 
-// busFactor scores how distributed recent authorship is, as a continuous
-// companion to the bus_factor GATE (which fires only at the extreme:
-// share > 0.80 AND count <= 2). The sub-score gives a graded signal across the
-// danger zone the gate misses (e.g. 0.75 share with 3 contributors). It blends
-// concentration — how little the top author dominates, (1−share) scaled so a
-// top share at/under 0.40 earns full marks — at 0.6 with pool size — the
-// contributor count scaled so 5+ earns full marks — at 0.4.
-//
-// No contributor data (ContributorCount == 0, e.g. commit-activity stats
-// unavailable) scores a neutral 50 rather than 0.
-//
-// ceiling: a proxy over the two metrics we collect (top-1 share + count). The
-// exact CHAOSS bus factor (smallest N making 50% of contributions) needs the
-// full per-contributor distribution, which we do not fetch.
-func busFactor(raw RawMetrics) SubScore {
-	const formula = "0.6·concentration + 0.4·pool; no data → 50"
-	if raw.ContributorCount == 0 {
-		return SubScore{
-			Key:     "bus_factor",
-			Label:   "Bus factor",
-			Value:   50,
-			Formula: formula,
-			Raw:     "no contributor data",
-		}
-	}
-	concentration := clamp((1-raw.TopContributorRecentShare)/0.6*100, 0, 100)
-	pool := clamp(float64(raw.ContributorCount-1)/4*100, 0, 100)
-	return SubScore{
-		Key:     "bus_factor",
-		Label:   "Bus factor",
-		Value:   0.6*concentration + 0.4*pool,
-		Formula: formula,
-		Raw: fmt.Sprintf("top author %.0f%% of commits, %d contributors",
-			raw.TopContributorRecentShare*100, raw.ContributorCount),
-	}
-}
-
 // --- Community / Governance -------------------------------------------------
 
 // issueResponsiveness scores the bot-filtered median time-to-first-response.
@@ -160,6 +123,12 @@ func issueResponsiveness(raw RawMetrics) SubScore {
 }
 
 // prAcceptance scores merged/(merged+closedUnmerged) PRs. No closed PRs -> 50.
+//
+// B6: MergedPRs and ClosedUnmergedPRs are NOT all-time totals despite their
+// names. The collector fetches the most recently-updated 100 closed pull
+// requests (one API page, sorted updated-desc, page cap 100); see
+// metrics.Collect. "No closed PRs → 50" therefore means "no recently-updated
+// closed PRs in the page", not "no PRs ever closed".
 func prAcceptance(raw RawMetrics) SubScore {
 	total := raw.MergedPRs + raw.ClosedUnmergedPRs
 	return ratioScore(raw.MergedPRs, total, "pr_acceptance", "PR acceptance",
@@ -266,6 +235,94 @@ func workflowSafety(raw RawMetrics) SubScore {
 	}
 	return SubScore{Key: "workflow_safety", Label: "Workflow safety", Value: value,
 		Formula: "pull_request_target → 30; unfetched → 70; else 100", Raw: desc}
+}
+
+// --- Community / Contributable additions (B3) --------------------------------
+
+// PR-responsiveness thresholds for open-PR ghosting. Exported as constants so
+// test cases can reference them symbolically rather than embedding magic numbers.
+const (
+	// prResponsivenessAgeLo is the median open-PR age (days) at or below which
+	// the freshness component scores 100.
+	prResponsivenessAgeLo = 14.0
+	// prResponsivenessAgeHi is the median open-PR age (days) at or above which
+	// the freshness component scores 0.
+	prResponsivenessAgeHi = 180.0
+	// prResponsivenessMaxStale is the number of stale-newcomer open PRs at or
+	// above which the stale-penalty component scores 0.
+	prResponsivenessMaxStale = 5.0
+)
+
+// prResponsiveness scores open-PR ghosting: a maintainer who lets open PRs
+// (especially newcomer PRs) sit for months is hard to contribute to,
+// regardless of their merge rate on already-closed PRs.
+//
+// When OpenPRCount == 0 the signal is absent (no open PRs could mean healthy
+// velocity OR no incoming PRs at all); defaults to neutral 50.
+//
+// Otherwise the score blends two components:
+//
+//	freshness    = linearDown(MedianOpenPRAgeDays, ageLo=14d, ageHi=180d)
+//	staleScore   = clamp((maxStale − StaleNewcomerOpenPRs) / maxStale × 100, 0, 100)
+//	value        = 0.6 × freshness + 0.4 × staleScore
+//
+// Rationale for 0.6/0.4 bias: median age captures the whole PR queue; stale
+// newcomer count is the most contributor-relevant signal but is a subset.
+func prResponsiveness(raw RawMetrics) SubScore {
+	const formula = "0 open PRs → 50; 0.6·freshness(median age) + 0.4·stale-penalty"
+	if raw.OpenPRCount == 0 {
+		return SubScore{
+			Key:     "pr_responsiveness",
+			Label:   "PR responsiveness",
+			Value:   50,
+			Formula: formula,
+			Raw:     "no open PRs",
+		}
+	}
+	freshness := linearDown(raw.MedianOpenPRAgeDays, prResponsivenessAgeLo, prResponsivenessAgeHi)
+	staleScore := clamp((prResponsivenessMaxStale-float64(raw.StaleNewcomerOpenPRs))/prResponsivenessMaxStale*100, 0, 100)
+	value := 0.6*freshness + 0.4*staleScore
+	return SubScore{
+		Key:     "pr_responsiveness",
+		Label:   "PR responsiveness",
+		Value:   value,
+		Formula: formula,
+		Raw: fmt.Sprintf("median %.0fd open, %d stale newcomer PRs",
+			raw.MedianOpenPRAgeDays, raw.StaleNewcomerOpenPRs),
+	}
+}
+
+// newcomerSignalsPerIssue is the points-per-labelled-issue used by
+// newcomerSignals. Ten labelled issues earns a full 100; one earns 10. The
+// signal saturates at 100 so a large issue backlog cannot dominate the score.
+const newcomerSignalsPerIssue = 10.0
+
+// newcomerSignals scores the presence of curated entry points: open issues
+// labelled "good first issue" or "help wanted". A project that curates
+// beginner tasks is signalling contributor intent, which is a positive
+// Contributable signal.
+//
+// Formula: min(100, (GoodFirstIssues + HelpWantedIssues) × 10)
+//
+// This is intentionally modest (weight 0.05 in Community) so it acts as a
+// bonus for welcoming projects rather than a way to override the
+// closed_to_strangers gate or the newcomer_merge_rate signal. The
+// closed_to_strangers gate still governs the Contributable question as a cap:
+// a project can label many issues but if newcomers' PRs are never merged, the
+// gate fires and depresses the Contributable score regardless.
+func newcomerSignals(raw RawMetrics) SubScore {
+	const formula = "min(100, (good-first-issue + help-wanted) × 10)"
+	total := raw.GoodFirstIssues + raw.HelpWantedIssues
+	value := clamp(float64(total)*newcomerSignalsPerIssue, 0, 100)
+	rawDesc := fmt.Sprintf("%d labelled issues (%d gfi, %d hw)",
+		total, raw.GoodFirstIssues, raw.HelpWantedIssues)
+	return SubScore{
+		Key:     "newcomer_signals",
+		Label:   "Newcomer signals",
+		Value:   value,
+		Formula: formula,
+		Raw:     rawDesc,
+	}
 }
 
 // --- helpers ----------------------------------------------------------------

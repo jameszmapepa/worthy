@@ -11,12 +11,12 @@ func TestSubScoreFormula(t *testing.T) {
 	r := Evaluate(healthyRaw())
 
 	want := map[string]string{
-		"commit_frequency":     "min(100, median12/15 × 100)",
-		"commit_recency":       "max(0, 100 − days/365 × 100)",
-		"release_cadence":      "0 releases → 40; else linear 90→730d",
-		"issue_close_ratio":    "closed / (closed+open), 90d cohort",
-		"pr_backlog":           "merged / (merged+open), 90d cohort",
-		"bus_factor":           "0.6·concentration + 0.4·pool; no data → 50",
+		"commit_frequency":  "min(100, median12/15 × 100)",
+		"commit_recency":    "max(0, 100 − days/365 × 100)",
+		"release_cadence":   "0 releases → 40; else linear 90→730d",
+		"issue_close_ratio": "closed / (closed+open), 90d cohort",
+		"pr_backlog":        "merged / (merged+open), 90d cohort",
+		// bus_factor sub-score removed in B5; risk now surfaces only through the gate.
 		"issue_responsiveness": "≤24h→100; ≤168h→100..60; ≤720h→60..0; else 0",
 		"pr_acceptance":        "merged / (merged+rejected) × 100",
 		"newcomer_merge_rate":  "merged / (merged+rejected) × 100",
