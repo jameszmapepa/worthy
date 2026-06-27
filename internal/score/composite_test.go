@@ -52,11 +52,14 @@ func TestCategoryWeightsAndComposite(t *testing.T) {
 			sec = c
 		}
 	}
-	approx(t, act.Weight, 0.45, "activity weight")
+	approx(t, act.Weight, 0.475, "activity weight")
 	approx(t, com.Weight, 0.45, "community weight")
-	approx(t, sec.Weight, 0.10, "security weight")
+	approx(t, sec.Weight, 0.075, "security weight")
 
-	want := 0.45*act.Value + 0.45*com.Value + 0.10*sec.Value
+	// Verify the composite is the weighted sum, using the report's own category
+	// weights so this stays correct if the split is re-tuned (the literal values
+	// are pinned above and in the README-consistency test).
+	want := act.Weight*act.Value + com.Weight*com.Value + sec.Weight*sec.Value
 	// Composite is rounded to one decimal.
 	approx(t, r.Composite, round1(want), "raw composite")
 }

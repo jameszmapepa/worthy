@@ -9,11 +9,15 @@ const (
 	CategorySecurity  = "security"
 )
 
-// Category weights in the composite. They sum to 1.0.
+// Category weights in the composite. They sum to 1.0. Activity and Community
+// (the two questions) carry most of the weight; Security is held at 7.5%
+// because most of its signals cannot be assessed unauthenticated — the
+// supply-chain integrity GATE, not this category weight, is what catches the
+// xz pattern, so the small weight still lets security nudge the grade.
 const (
-	weightActivity  = 0.45
+	weightActivity  = 0.475
 	weightCommunity = 0.45
-	weightSecurity  = 0.10
+	weightSecurity  = 0.075
 )
 
 // SubScore is a single scored health indicator in the range 0..100.

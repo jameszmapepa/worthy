@@ -35,13 +35,17 @@ open-source-survival research.
 
 ## The scoring model
 
-**Composite = 45% Activity + 45% Community/Governance + 10% Security/Integrity.**
+**Composite = 47.5% Activity + 45% Community/Governance + 7.5% Security/Integrity.**
 
 | Category | Indicators |
 |---|---|
-| **Activity** (45%) | commit frequency, commit recency, release cadence, issue close-ratio, PR backlog |
+| **Activity** (47.5%) | commit frequency, commit recency, release cadence, issue close-ratio, PR backlog |
 | **Community** (45%) | newcomer merge rate (.25), issue first-response time / bot-filtered (.20), PR acceptance (.15), governance docs (.15), license (.10), **open-PR responsiveness** (.10), **newcomer signals** / good-first-issue & help-wanted (.05) |
-| **Security** (10%) | CI present, signed releases, security policy, workflow `pull_request_target` safety |
+| **Security** (7.5%) | CI present, signed releases, security policy, workflow `pull_request_target` safety |
+
+Security is held at a modest weight because most of its signals can't be assessed
+without authentication; the integrity *gate* (not this category weight) is what
+catches the xz pattern.
 
 Letter grade (A/B/C/D/F) is applied to the **gate-adjusted** composite.
 

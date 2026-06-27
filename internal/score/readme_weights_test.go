@@ -35,17 +35,17 @@ func TestReadmeCategoryWeightsMatchCode(t *testing.T) {
 		"Community": weightCommunity,
 		"Security":  weightSecurity,
 	}
-	rowRe := regexp.MustCompile(`\*\*(Activity|Community|Security)\*\* \((\d+)%\)`)
+	rowRe := regexp.MustCompile(`\*\*(Activity|Community|Security)\*\* \((\d+(?:\.\d+)?)%\)`)
 
 	// Act
 	found := map[string]float64{}
 	for _, line := range readmeLines(t) {
 		if m := rowRe.FindStringSubmatch(line); m != nil {
-			pct, err := strconv.Atoi(m[2])
+			pct, err := strconv.ParseFloat(m[2], 64)
 			if err != nil {
 				t.Fatalf("parse %q percent: %v", m[1], err)
 			}
-			found[m[1]] = float64(pct) / 100
+			found[m[1]] = pct / 100
 		}
 	}
 
