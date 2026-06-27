@@ -29,6 +29,11 @@ const (
 // explain).
 const viewCount = 4
 
+// fetchTimeout is the maximum time the fetch goroutine is allowed to run
+// before it is cancelled and an error is surfaced. A hung GitHub API response
+// should never cause an invisible infinite hang (C9).
+const fetchTimeout = 60 * time.Second
+
 // resultMsg carries the outcome of the async collect+evaluate command.
 type resultMsg struct {
 	report score.Report
@@ -39,17 +44,21 @@ type resultMsg struct {
 // Model is the Bubble Tea model for the repo-health TUI.
 type Model struct {
 	ctx    context.Context
+	cancel context.CancelFunc // cancels the Run-level context on quit (C9)
 	client *github.Client
 	owner  string
 	repo   string
 	now    time.Time
 
-	state    state
-	view     int  // active view index 0..viewCount-1
-	selected int  // selected item index; meaning is view-dependent (flattened indicator on views 0/1, category on view 2)
-	expanded bool // whether the selected item's detail panel is expanded
-	width    int
-	spinner  spinner.Model
+	state       state
+	view        int  // active view index 0..viewCount-1
+	selected    int  // selected item index; meaning is view-dependent
+	expanded    bool // whether the selected item's detail panel is expanded
+	helpVisible bool // whether the keybinding help overlay is shown (C10)
+	width       int
+	height      int // terminal height from tea.WindowSizeMsg (C3)
+	loadStart   time.Time
+	spinner     spinner.Model
 
 	report score.Report
 	raw    score.RawMetrics
@@ -68,14 +77,17 @@ func WithNow(now time.Time) Option {
 // New constructs a Model in the loading state for owner/repo.
 func New(ctx context.Context, client *github.Client, owner, repo string, opts ...Option) Model {
 	m := Model{
-		ctx:     ctx,
-		client:  client,
-		owner:   owner,
-		repo:    repo,
-		now:     time.Now(),
-		state:   stateLoading,
-		spinner: spinner.New(),
-		width:   80,
+		ctx:       ctx,
+		cancel:    func() {}, // no-op default; Run replaces with a real cancel
+		client:    client,
+		owner:     owner,
+		repo:      repo,
+		now:       time.Now(),
+		state:     stateLoading,
+		spinner:   spinner.New(),
+		width:     80,
+		height:    0, // 0 means unknown; truncation is skipped until we know
+		loadStart: time.Now(),
 	}
 	for _, o := range opts {
 		o(&m)
@@ -89,11 +101,16 @@ func (m Model) Init() tea.Cmd {
 }
 
 // fetchCmd runs metrics.Collect + score.Evaluate off the UI goroutine and
-// reports the result as a resultMsg.
+// reports the result as a resultMsg. The fetch is bounded by fetchTimeout so a
+// hung GitHub API never causes an invisible hang (C9).
 func (m Model) fetchCmd() tea.Cmd {
-	ctx, client := m.ctx, m.client
+	// Derive a timeout child of the model's context so the fetch stops when
+	// either the user quits (Run-level cancel) or the timeout fires.
+	ctx, cancel := context.WithTimeout(m.ctx, fetchTimeout)
+	client := m.client
 	owner, repo, now := m.owner, m.repo, m.now
 	return func() tea.Msg {
+		defer cancel()
 		raw, err := metrics.Collect(ctx, client, owner, repo, now)
 		if err != nil {
 			return resultMsg{err: err}
@@ -106,7 +123,9 @@ func (m Model) fetchCmd() tea.Cmd {
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
+		// C3: track both width and height so render() can truncate long views.
 		m.width = msg.Width
+		m.height = msg.Height
 		return m, nil
 
 	case resultMsg:
@@ -131,19 +150,30 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// handleKey processes key presses: quit, view switching, re-fetch, and (on the
-// selectable views) item selection + drill-down.
+// handleKey processes key presses: quit, view switching, help overlay, re-fetch,
+// and (on the selectable views) item selection + drill-down.
 func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "q", "ctrl+c":
+		// C9: signal the fetch goroutine to stop before quitting.
+		m.cancel()
 		return m, tea.Quit
 	case "esc":
-		// Collapse an open drill-down; otherwise quit.
+		// Collapse an open drill-down or help overlay; otherwise quit.
+		if m.helpVisible {
+			m.helpVisible = false
+			return m, nil
+		}
 		if m.canSelect() && m.expanded {
 			m.expanded = false
 			return m, nil
 		}
+		m.cancel()
 		return m, tea.Quit
+	case "?":
+		// C10: toggle keybinding help overlay.
+		m.helpVisible = !m.helpVisible
+		return m, nil
 	case "tab":
 		m.view = (m.view + 1) % viewCount
 		m.resetSelection()
@@ -167,6 +197,7 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case "r":
 		m.state = stateLoading
 		m.err = nil
+		m.loadStart = time.Now()
 		return m, tea.Batch(m.spinner.Tick, m.fetchCmd())
 	case "j", "down":
 		if m.canSelect() {
@@ -251,9 +282,15 @@ func (m Model) View() tea.View {
 	return tea.NewView(m.render())
 }
 
-// Run constructs and runs the program to completion (blocking).
+// Run constructs and runs the program to completion (blocking). A cancellable
+// child context is derived from ctx and stored on the model so pressing q or
+// ctrl+c cancels any in-flight fetch goroutine before the program exits (C9).
 func Run(ctx context.Context, client *github.Client, owner, repo string, opts ...Option) error {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel() // also fires on normal exit / panic
+
 	m := New(ctx, client, owner, repo, opts...)
+	m.cancel = cancel
 	_, err := tea.NewProgram(m).Run()
 	return err
 }

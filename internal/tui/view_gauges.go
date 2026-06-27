@@ -4,9 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"charm.land/bubbles/v2/progress"
 	"charm.land/lipgloss/v2"
-	"github.com/NimbleMarkets/ntcharts/v2/sparkline"
 
 	"github.com/jameszmapepa/repo-health/internal/score"
 )
@@ -14,9 +12,20 @@ import (
 // gaugeLabelWidth is the fixed column width for gauge labels.
 const gaugeLabelWidth = 12
 
+// narrowTerminalWidth is the column threshold below which the two-panel
+// dashboard switches from JoinHorizontal to JoinVertical. Below this width
+// the panels would be too cramped side-by-side to be readable.
+const narrowTerminalWidth = 70
+
+// gaugeDetailBarWidthOverhead is the total fixed column overhead in a gauge
+// detail panel row (22-char label + spacing + value + border/padding). Used to
+// derive bar width from half the terminal width.
+const gaugeDetailBarWidthOverhead = 28
+
 // renderGauges renders View 3 as a two-panel dashboard: category + composite
 // gauges on the left, and the 52-week commit sparkline plus headline stats on
-// the right, joined horizontally.
+// the right. Below narrowTerminalWidth columns the panels are stacked
+// vertically instead of placed side-by-side.
 func renderGauges(r score.Report, raw score.RawMetrics, width, selected int, expanded bool) string {
 	grade := lipgloss.NewStyle().Foreground(barColor(r.AdjustedComposite)).Bold(true).
 		Render(fmt.Sprintf("  %s  ", r.Grade))
@@ -41,7 +50,15 @@ func renderGauges(r score.Report, raw score.RawMetrics, width, selected int, exp
 		headlineStats(raw)
 	trendPanel := titledPanel("Activity", trend, colorBorder)
 
-	dashboard := lipgloss.JoinHorizontal(lipgloss.Top, gaugePanel, "  ", trendPanel)
+	// C4: below the narrow threshold, stack the panels vertically so each can
+	// use the full width rather than half. Above the threshold they sit
+	// side-by-side with a two-space gap.
+	var dashboard string
+	if width < narrowTerminalWidth {
+		dashboard = lipgloss.JoinVertical(lipgloss.Left, gaugePanel, trendPanel)
+	} else {
+		dashboard = lipgloss.JoinHorizontal(lipgloss.Top, gaugePanel, "  ", trendPanel)
+	}
 	out := head + "\n\n" + dashboard
 
 	if expanded && selected >= 0 && selected < len(r.Categories) {
@@ -71,49 +88,49 @@ func headlineStats(raw score.RawMetrics) string {
 	return b.String()
 }
 
-// renderGauge renders one static progress bar for a 0..100 value. The bar uses
-// the value's band color (green/amber/red) and is rendered with ViewAs so it is
-// a fixed snapshot rather than an animation.
+// renderGauge renders one progress bar for a 0..100 value using renderBar
+// (C7 — avoids allocating a fresh progress.Model every render), with a text
+// grade (C5 — meaning survives NO_COLOR / monochrome terminals).
 func renderGauge(label string, value float64, barWidth int, selected bool) string {
-	c := barColor(value)
-	prog := progress.New(progress.WithColors(c, c), progress.WithWidth(barWidth))
+	bar := renderBar(value, barWidth)
+	// C5: text-tier grade so the quality level is legible without color.
+	grade := mutedStyle.Render(score.LetterGrade(value))
 	name := fmt.Sprintf("%-*s", gaugeLabelWidth, truncate(label, gaugeLabelWidth))
 	marker := "  "
 	if selected {
 		marker = selectedMarkerStyle.Render("▸ ")
 		name = selectedLabelStyle.Render(name)
 	}
-	return fmt.Sprintf("%s%s %s %5.1f", marker, name, prog.ViewAs(value/100), value)
+	return fmt.Sprintf("%s%s %s %5.1f%s", marker, name, bar, value, grade)
 }
 
 // renderGaugeDetail renders the inline drill-down panel for a selected category
 // gauge: its constituent indicators as labeled bars, tracing the category score
 // back to the sub-scores behind it. Mirrors the scorecard's detail placement.
 func renderGaugeDetail(cat score.CategoryScore, width int) string {
-	barWidth := clampWidth(width/2-28, 8, 24)
+	barWidth := clampWidth(width/2-gaugeDetailBarWidthOverhead, 8, 24)
 	lines := []string{titleStyle.Render(cat.Label + " indicators")}
 	for _, s := range cat.Subs {
 		name := labelStyle.Render(fmt.Sprintf("%-22s", truncate(s.Label, 22)))
 		bar := renderBar(s.Value, barWidth)
 		val := lipgloss.NewStyle().Foreground(barColor(s.Value)).
 			Render(fmt.Sprintf("%5.1f", s.Value))
+		// C5: text-tier grade alongside the bar value.
+		grade := mutedStyle.Render(score.LetterGrade(s.Value))
 		raw := mutedStyle.Render(truncate(s.Raw, 28))
-		lines = append(lines, fmt.Sprintf("%s %s %s  %s", name, bar, val, raw))
+		lines = append(lines, fmt.Sprintf("%s %s %s%s  %s", name, bar, val, grade, raw))
 	}
 	return detailStyle.Render(strings.Join(lines, "\n"))
 }
 
-// renderSparkline renders the commit-count series as an ntcharts sparkline.
+// renderSparkline renders the commit-count series as a hand-rolled Unicode
+// block sparkline (▁▂▃▄▅▆▇█). This replaces the ntcharts dependency, which
+// dragged in image/png and golang.org/x/image for a single-row sparkline.
+// sparklineBlock handles the normalization and sampling; renderSparkline adds
+// the empty-data guard and muted ANSI styling.
 func renderSparkline(weekly []int, width int) string {
 	if len(weekly) == 0 {
 		return mutedStyle.Render("(no commit-activity data)")
 	}
-	data := make([]float64, len(weekly))
-	for i, v := range weekly {
-		data[i] = float64(v)
-	}
-	sl := sparkline.New(width, 1)
-	sl.PushAll(data)
-	sl.Draw()
-	return sl.View()
+	return sparklineBlock(weekly, width)
 }

@@ -63,11 +63,11 @@ func TestBarColorThresholds(t *testing.T) {
 
 func TestHeaderShowsRateLimitMode(t *testing.T) {
 	raw := fixedRaw()
-	unauth := renderHeaderPanel("charmbracelet", "bubbletea", raw, true, false, 80)
+	unauth := renderHeaderPanel("charmbracelet", "bubbletea", raw, true, false, 80, "")
 	if !strings.Contains(unauth, "60") || !strings.Contains(unauth, "charmbracelet/bubbletea") {
 		t.Errorf("unauth header wrong:\n%s", unauth)
 	}
-	auth := renderHeaderPanel("charmbracelet", "bubbletea", raw, true, true, 80)
+	auth := renderHeaderPanel("charmbracelet", "bubbletea", raw, true, true, 80, "")
 	if !strings.Contains(auth, "5,000") {
 		t.Errorf("auth header should show 5,000/hr:\n%s", auth)
 	}
@@ -78,7 +78,7 @@ func TestHeaderShowsMetaWhenLoaded(t *testing.T) {
 	raw.Description = "A delightful TUI framework"
 	raw.LicenseSPDX = "MIT"
 	raw.RepoAgeDays = 1200
-	out := renderHeaderPanel("charm", "bubbletea", raw, true, true, 100)
+	out := renderHeaderPanel("charm", "bubbletea", raw, true, true, 100, "B")
 	for _, want := range []string{"delightful TUI", glyphStar, "MIT", "3.3y old"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("loaded header missing %q:\n%s", want, out)
@@ -89,12 +89,30 @@ func TestHeaderShowsMetaWhenLoaded(t *testing.T) {
 func TestHeaderHidesMetaWhenNotLoaded(t *testing.T) {
 	raw := fixedRaw()
 	raw.Description = "should not show yet"
-	out := renderHeaderPanel("charm", "bubbletea", raw, false, true, 100)
+	out := renderHeaderPanel("charm", "bubbletea", raw, false, true, 100, "")
 	if strings.Contains(out, "should not show yet") {
 		t.Errorf("header must not show description before load:\n%s", out)
 	}
 	if !strings.Contains(out, "charm/bubbletea") {
 		t.Errorf("header must always show identity:\n%s", out)
+	}
+}
+
+// TestHeaderShowsGradeWhenLoaded verifies the C1 change: the composite letter
+// grade is appended to the identity row once metrics are loaded.
+func TestHeaderShowsGradeWhenLoaded(t *testing.T) {
+	raw := fixedRaw()
+	out := stripANSI(renderHeaderPanel("o", "r", raw, true, false, 100, "A"))
+	if !strings.Contains(out, "Grade A") {
+		t.Errorf("loaded header should show the composite grade:\n%s", out)
+	}
+}
+
+func TestHeaderOmitsGradeWhenNotLoaded(t *testing.T) {
+	raw := fixedRaw()
+	out := stripANSI(renderHeaderPanel("o", "r", raw, false, false, 100, ""))
+	if strings.Contains(out, "Grade") {
+		t.Errorf("header must not show grade before load:\n%s", out)
 	}
 }
 
