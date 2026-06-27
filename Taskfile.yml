@@ -1,0 +1,88 @@
+version: "3"
+
+# Build tooling for repo-health. The release build strips the symbol table and
+# DWARF debug info (-s -w) and removes embedded local paths (-trimpath); this is
+# ~29% smaller than a plain `go build` with no runtime behaviour change.
+
+vars:
+  BIN: repohealth
+  PKG: ./cmd/repohealth
+  # ceiling: no version stamping yet; add `-X main.version={{.VERSION}}` here and
+  # a `var version` in main.go if/when releases are tagged.
+  LDFLAGS: -s -w
+
+tasks:
+  default:
+    desc: List available tasks
+    cmds:
+      - task --list
+    silent: true
+
+  build:
+    desc: Stripped release build (small binary)
+    cmds:
+      - go build -trimpath -ldflags="{{.LDFLAGS}}" -o bin/{{.BIN}} {{.PKG}}
+    generates:
+      - bin/{{.BIN}}
+
+  build:debug:
+    desc: Unstripped build with full debug info
+    cmds:
+      - go build -o bin/{{.BIN}}-debug {{.PKG}}
+
+  install:
+    desc: Install the stripped binary to GOPATH/bin
+    cmds:
+      - go install -trimpath -ldflags="{{.LDFLAGS}}" {{.PKG}}
+
+  run:
+    desc: 'Run against a repo, e.g. `task run -- charmbracelet/log`'
+    cmds:
+      - go run {{.PKG}} {{.CLI_ARGS}}
+
+  test:
+    desc: Run the full test suite
+    cmds:
+      - go test ./...
+
+  test:race:
+    desc: Run tests with the race detector
+    cmds:
+      - go test -race ./...
+
+  cover:
+    desc: Report total test coverage
+    cmds:
+      - go test -cover ./...
+
+  bench:
+    desc: Run benchmarks with allocation stats
+    cmds:
+      - go test -bench=. -benchmem ./...
+
+  vet:
+    desc: go vet
+    cmds:
+      - go vet ./...
+
+  tidy:
+    desc: Tidy and verify module deps
+    cmds:
+      - go mod tidy
+      - go mod verify
+
+  size:
+    desc: Compare default vs stripped binary size
+    cmds:
+      - go build -o bin/{{.BIN}}-plain {{.PKG}}
+      - go build -trimpath -ldflags="{{.LDFLAGS}}" -o bin/{{.BIN}} {{.PKG}}
+      - 'ls -lh bin/{{.BIN}}-plain bin/{{.BIN}} | awk ''{print $5, $9}'''
+
+  check:
+    desc: Full pre-commit gate (vet + race tests)
+    deps: [vet, test:race]
+
+  clean:
+    desc: Remove build artifacts
+    cmds:
+      - rm -rf bin/
