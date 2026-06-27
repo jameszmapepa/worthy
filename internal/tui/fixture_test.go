@@ -48,7 +48,7 @@ func fixedReport() score.Report {
 		Composite:         68.2,
 		AdjustedComposite: 68.2,
 		Grade:             "C",
-		Verdict:           "In fair health (grade C): strongest on license, weakest on workflow safety; flagged closed to newcomers.",
+		Verdict:           "Mixed signals (grade C): strongest on license, weakest on workflow safety; flagged closed to newcomers.",
 		Gates:             gates,
 		Maintained:        verdicts[0],
 		Contributable:     verdicts[1],
@@ -78,7 +78,7 @@ func healthyFixedReport() score.Report {
 		Composite:         88.0,
 		AdjustedComposite: 88.0,
 		Grade:             "A",
-		Verdict:           "In excellent health (grade A): strongest on CI present, weakest on workflow safety.",
+		Verdict:           "Healthy and welcoming (grade A): strongest on CI present, weakest on workflow safety.",
 		Gates:             nil,
 	}
 }

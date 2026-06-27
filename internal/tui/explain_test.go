@@ -7,7 +7,7 @@ import (
 
 func TestExplainShowsVerdict(t *testing.T) {
 	out := renderExplain(fixedReport(), 80)
-	if !strings.Contains(out, "In fair health") {
+	if !strings.Contains(out, "Mixed signals") {
 		t.Errorf("explain view should show the verdict headline:\n%s", out)
 	}
 }
@@ -53,7 +53,7 @@ func TestExplainRendersAsActiveView(t *testing.T) {
 	m := loadedModel(t)
 	m = press(m, "4")
 	out := m.render()
-	if !strings.Contains(out, "In fair health") {
+	if !strings.Contains(out, "Mixed signals") {
 		t.Error("view 3 should render the Explain view with the verdict")
 	}
 }

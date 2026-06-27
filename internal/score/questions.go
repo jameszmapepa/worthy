@@ -15,7 +15,40 @@ type QuestionScore struct {
 	RawValue     float64  // weighted aggregate before gate caps, 0..100, one decimal
 	Value        float64  // gate-adjusted: min(RawValue, question's gate caps), 0..100
 	Grade        string   // letter grade on Value (gate-adjusted)
+	Message      string   // plain-language reading of the grade for this question
 	CategoryKeys []string // categories that feed this question, in display order
+}
+
+// Per-question, grade-keyed plain-language readings. Deliberately diplomatic: a
+// low grade reports limited evidence of activity/openness rather than asserting
+// a project is dead or hostile (the data is a prior on behaviour, not a verdict
+// on intent — see the README caveats).
+var maintainedMessages = map[string]string{
+	"A": "Actively maintained",
+	"B": "Maintained",
+	"C": "Steady but slowing",
+	"D": "Limited recent activity",
+	"F": "Largely inactive",
+}
+
+var contributableMessages = map[string]string{
+	"A": "Welcoming to newcomers",
+	"B": "Open to contributions",
+	"C": "Mixed for newcomers",
+	"D": "Selective on outside PRs",
+	"F": "Rarely merges outside PRs",
+}
+
+// questionMessage returns the diplomatic reading for a question key + grade, or
+// "" when either is unrecognized.
+func questionMessage(key, grade string) string {
+	switch key {
+	case "maintained":
+		return maintainedMessages[grade]
+	case "newcomer":
+		return contributableMessages[grade]
+	}
+	return ""
 }
 
 // questionDefs maps each contributor-facing question to the categories that
@@ -115,12 +148,14 @@ func computeQuestionScores(cats []CategoryScore, gates []Gate) (maintained, cont
 		}
 		value := round1(math.Min(rawValue, capFn(gates)))
 
+		grade := LetterGrade(value)
 		qs := QuestionScore{
 			Key:          def.key,
 			Label:        def.label,
 			RawValue:     rawValue,
 			Value:        value,
-			Grade:        LetterGrade(value),
+			Grade:        grade,
+			Message:      questionMessage(def.key, grade),
 			CategoryKeys: keys,
 		}
 		switch def.key {

@@ -131,6 +131,9 @@ func renderQuestionCard(qs score.QuestionScore, width int) string {
 	headline := bigGrade + val
 
 	body := question + "\n" + headline
+	if qs.Message != "" {
+		body += "\n" + mutedStyle.Render(truncate(qs.Message, innerW))
+	}
 	// Width(w) sets the box including padding; border is outside.
 	return questionCardStyle.Width(width - 2).Render(body)
 }
