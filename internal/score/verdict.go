@@ -5,13 +5,15 @@ import (
 	"strings"
 )
 
-// gradePhrase gives a plain-language opener for each letter grade.
+// gradePhrase gives a plain-language opener for each letter grade. Phrased
+// diplomatically and around the tool's two questions (is it maintained / open
+// to contribution) rather than a clinical "health" label.
 var gradePhrase = map[string]string{
-	"A": "In excellent health",
-	"B": "In good health",
-	"C": "In fair health",
-	"D": "In poor health",
-	"F": "In critical health",
+	"A": "Healthy and welcoming",
+	"B": "In good shape",
+	"C": "Mixed signals",
+	"D": "Some concerns",
+	"F": "Serious concerns",
 }
 
 // buildVerdict composes a one-sentence, honest summary of a report from its

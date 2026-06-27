@@ -81,6 +81,11 @@ func TestCollect_HappyPath(t *testing.T) {
 			w.WriteHeader(http.StatusOK)
 			_, _ = fmt.Fprint(w, closedPRsBody)
 
+		// RecentPulls — open page for open-PR ghosting metrics (A2)
+		case path == "/repos/acme/widget/pulls" && r.URL.Query().Get("state") == "open" && r.URL.Query().Get("sort") == "updated":
+			w.WriteHeader(http.StatusOK)
+			_, _ = fmt.Fprint(w, `[]`) // no open PRs in the happy-path fixture
+
 		// RecentPullsByCreation — 90-day cohort (state=all, sort=created)
 		case path == "/repos/acme/widget/pulls" && r.URL.Query().Get("state") == "all" && r.URL.Query().Get("sort") == "created":
 			w.WriteHeader(http.StatusOK)
@@ -147,9 +152,6 @@ func TestCollect_HappyPath(t *testing.T) {
 	}
 	if got.HasContributing {
 		t.Error("HasContributing should be false")
-	}
-	if !got.HasLicense {
-		t.Error("HasLicense should be true")
 	}
 	if got.HasCodeOfConduct {
 		t.Error("HasCodeOfConduct should be false")
@@ -246,6 +248,30 @@ func TestCollect_HappyPath(t *testing.T) {
 	// Issue 12: frank, no comments → no response. Median of [2.0] = 2.0h.
 	if got.MedianIssueFirstResponseHours < 1.9 || got.MedianIssueFirstResponseHours > 2.1 {
 		t.Errorf("MedianIssueFirstResponseHours = %.2f; want ≈2.0", got.MedianIssueFirstResponseHours)
+	}
+
+	// --- A4: Fork flag ---
+	if got.Fork {
+		t.Error("Fork should be false (repoJSON has fork:false)")
+	}
+
+	// --- A2: open-PR ghosting — no open PRs in fixture, all zeros ---
+	if got.OpenPRCount != 0 {
+		t.Errorf("OpenPRCount = %d; want 0 (no open PRs in fixture)", got.OpenPRCount)
+	}
+	if got.MedianOpenPRAgeDays != 0 {
+		t.Errorf("MedianOpenPRAgeDays = %.2f; want 0", got.MedianOpenPRAgeDays)
+	}
+	if got.StaleNewcomerOpenPRs != 0 {
+		t.Errorf("StaleNewcomerOpenPRs = %d; want 0", got.StaleNewcomerOpenPRs)
+	}
+
+	// --- A3: label counts — recentIssuesBody has no labels, so both zero ---
+	if got.GoodFirstIssues != 0 {
+		t.Errorf("GoodFirstIssues = %d; want 0 (fixture issues carry no labels)", got.GoodFirstIssues)
+	}
+	if got.HelpWantedIssues != 0 {
+		t.Errorf("HelpWantedIssues = %d; want 0 (fixture issues carry no labels)", got.HelpWantedIssues)
 	}
 
 	// No partial metrics in happy path.

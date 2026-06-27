@@ -23,9 +23,10 @@ var headerPanelStyle = lipgloss.NewStyle().
 	Padding(0, 1)
 
 // renderHeaderPanel builds the bordered header shown on every view. owner/repo
-// is always present; the description and meta row appear once metrics are
-// loaded (loaded reports whether raw has been populated).
-func renderHeaderPanel(owner, repo string, raw score.RawMetrics, loaded, authenticated bool, width int) string {
+// is always present; the description, meta row, and composite grade (C1) appear
+// once metrics are loaded. grade is the non-empty letter grade from the loaded
+// Report; pass "" when the report is not yet available.
+func renderHeaderPanel(owner, repo string, raw score.RawMetrics, loaded, authenticated bool, width int, grade string) string {
 	// lipgloss Style.Width(w) sets the box width INCLUDING padding; the border
 	// adds 2 more cells outside it. So for a panel of total terminal width
 	// `width`, the box is width-2 and the usable text inside is width-2-2.
@@ -33,6 +34,14 @@ func renderHeaderPanel(owner, repo string, raw score.RawMetrics, loaded, authent
 	textW := boxW - 2 // minus left+right padding
 
 	identity := titleStyle.Render(owner + "/" + repo)
+
+	// C1: append the composite grade on every view once the report is loaded,
+	// so the user always sees the headline result without switching views.
+	if grade != "" {
+		identity += " " + mutedStyle.Render("·") + " " +
+			gradeStyle.Render("Grade "+grade)
+	}
+
 	badge := rateLimitBadge(authenticated)
 	top := joinEnds(identity, badge, textW)
 

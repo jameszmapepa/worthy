@@ -11,23 +11,6 @@ import (
 	"github.com/jameszmapepa/repo-health/internal/score"
 )
 
-// categoryGrade converts a 0..100 category value to a letter grade using the
-// same thresholds as score.letterGrade (see docs/SPEC.md).
-func categoryGrade(v float64) string {
-	switch {
-	case v >= 85:
-		return "A"
-	case v >= 70:
-		return "B"
-	case v >= 55:
-		return "C"
-	case v >= 40:
-		return "D"
-	default:
-		return "F"
-	}
-}
-
 // questionItem is one sub-score positioned in the two-question display order:
 // grouped by question, then sorted best-to-worst within the group. An item's
 // position in the flattened order is the index the model's `selected` refers to
@@ -96,7 +79,7 @@ func integrityItems(r score.Report) []questionItem {
 // best-to-worst horizontal bars, each under a sub-verdict grade and followed by
 // the gates its indicators trigger. Below the two questions, a "Supply-chain
 // integrity" section renders the Security category's sub-scores; those items
-// continue the flattened selection index so all 14 indicators remain selectable.
+// continue the flattened selection index so all 16 indicators remain selectable.
 // selected is the flattened indicator index across all groups (or <0 for none);
 // expanded shows the inline drill-down detail below the selected row.
 func renderQuestions(r score.Report, width, selected int, expanded bool) string {
@@ -118,7 +101,7 @@ func renderQuestions(r score.Report, width, selected int, expanded bool) string 
 		return b.String()
 	}
 
-	barWidth := clampWidth(width-scorecardLabelWidth-44, 10, 28)
+	barWidth := clampWidth(width-scorecardLabelWidth-scorecardBarWidthOverhead, 10, 28)
 	base := 0
 	for gi, g := range groups {
 		b.WriteString(renderQuestionGroup(g, barWidth, width, base, selected, expanded, r.Gates))
@@ -155,7 +138,7 @@ func renderIntegritySection(r score.Report, items []questionItem, barWidth, widt
 
 	boxW := clampWidth(width-2, 30, 200)
 	textW := boxW - 2
-	rawBudget := textW - (scorecardLabelWidth + 1 + barWidth + 1 + 5 + 2) - 1
+	rawBudget := textW - (scorecardLabelWidth + 1 + barWidth + 1 + 5 + 1 + 2) - 1
 	if rawBudget < 6 {
 		rawBudget = 6
 	}
@@ -163,8 +146,9 @@ func renderIntegritySection(r score.Report, items []questionItem, barWidth, widt
 	var b strings.Builder
 	header := lipgloss.NewStyle().Foreground(barColor(secCat.Value)).Bold(true).
 		Render("Supply-chain integrity")
+	// C7: use score.LetterGrade (single grade authority) instead of local categoryGrade.
 	b.WriteString(header)
-	b.WriteString(mutedStyle.Render(fmt.Sprintf("  %s · %.0f / 100", categoryGrade(secCat.Value), secCat.Value)))
+	b.WriteString(mutedStyle.Render(fmt.Sprintf("  %s · %.0f / 100", score.LetterGrade(secCat.Value), secCat.Value)))
 	b.WriteString("\n")
 
 	for i, it := range items {
@@ -198,8 +182,9 @@ func renderIntegritySection(r score.Report, items []questionItem, barWidth, widt
 func renderQuestionGroup(g questionGroup, barWidth, width, base, selected int, expanded bool, gates []score.Gate) string {
 	boxW := clampWidth(width-2, 30, 200)
 	textW := boxW - 2
-	// Match the scorecard's per-row budget so the bar + value + raw never wrap.
-	rawBudget := textW - (scorecardLabelWidth + 1 + barWidth + 1 + 5 + 2) - 1
+	// C5 adds 1 char (grade letter) alongside the numeric value; reduce rawBudget
+	// by 1 to prevent the row from overflowing its panel.
+	rawBudget := textW - (scorecardLabelWidth + 1 + barWidth + 1 + 5 + 1 + 2) - 1
 	if rawBudget < 6 {
 		rawBudget = 6
 	}
@@ -207,6 +192,7 @@ func renderQuestionGroup(g questionGroup, barWidth, width, base, selected int, e
 	var b strings.Builder
 	header := lipgloss.NewStyle().Foreground(barColor(g.verdict.Value)).Bold(true).
 		Render(g.verdict.Label)
+	// C7: verdict.Grade is already computed by score.LetterGrade in the score package.
 	b.WriteString(header)
 	b.WriteString(mutedStyle.Render(fmt.Sprintf("  %s · %.0f / 100", g.verdict.Grade, g.verdict.Value)))
 	b.WriteString("\n")

@@ -36,6 +36,11 @@ type Repo struct {
 	Fork          bool      `json:"fork"`
 }
 
+// Label is the subset of a GitHub issue label we read.
+type Label struct {
+	Name string `json:"name"`
+}
+
 // Issue is the subset of an issue we read. The GitHub /issues endpoint also
 // returns pull requests; PullRequest is non-nil exactly when this item is a PR.
 type Issue struct {
@@ -46,6 +51,7 @@ type Issue struct {
 	Comments    int        `json:"comments"`
 	User        User       `json:"user"`
 	AuthorAssoc string     `json:"author_association"`
+	Labels      []Label    `json:"labels"`
 	PullRequest *struct{}  `json:"pull_request"`
 }
 

@@ -106,7 +106,6 @@ func verdictRaw() RawMetrics {
 		DaysSinceLastRelease:          25,
 		HasReadme:                     true,
 		HasContributing:               true,
-		HasLicense:                    true,
 		LicenseSPDX:                   "MIT",
 		HasCI:                         false, // weak security
 		HasSecurityPolicy:             false,

@@ -100,7 +100,7 @@ func TestCollect_CommunityProfile404_RecordedInPartial(t *testing.T) {
 		t.Errorf("Partial = %v; want to contain %q", got.Partial, "community_profile")
 	}
 	// Governance fields should remain zero.
-	if got.HasReadme || got.HasLicense || got.HasSecurityPolicy {
+	if got.HasReadme || got.HasSecurityPolicy {
 		t.Error("governance fields should be false when community/profile is missing")
 	}
 }

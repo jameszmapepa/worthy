@@ -220,9 +220,10 @@ func TestQuestionsSelectionResetsOnViewSwitch(t *testing.T) {
 	}
 }
 
-func TestAllFifteenIndicatorsSelectableWithRealScorer(t *testing.T) {
-	// The real scorer produces 15 sub-scores (Activity:6, Community:5, Security:4).
-	// All 15 must be reachable via navigation on the questions view, which includes
+func TestAllSixteenIndicatorsSelectableWithRealScorer(t *testing.T) {
+	// The real scorer now produces 16 sub-scores (Activity:5, Community:7, Security:4).
+	// Community gained pr_responsiveness and newcomer_signals in Package B.
+	// All 16 must be reachable via navigation on the questions view, which includes
 	// the integrity section. This test uses score.Evaluate so the invariant is
 	// checked against production output, not the hand-built 7-item fixedReport.
 
@@ -238,8 +239,8 @@ func TestAllFifteenIndicatorsSelectableWithRealScorer(t *testing.T) {
 	}
 	total += len(integrity)
 
-	if total != 15 {
-		t.Fatalf("expected 15 selectable indicators, got %d (activity=%d community=%d security=%d)",
+	if total != 16 {
+		t.Fatalf("expected 16 selectable indicators, got %d (activity=%d community=%d security=%d)",
 			total,
 			func() int {
 				for _, g := range groups {
@@ -261,21 +262,21 @@ func TestAllFifteenIndicatorsSelectableWithRealScorer(t *testing.T) {
 		)
 	}
 
-	// Act + Assert: clamp from over-scroll must land at index 14 (0-based).
-	// We build a model, switch to questions view, and hammer j 20 times.
+	// Act + Assert: clamp from over-scroll must land at index 15 (0-based).
+	// We build a model, switch to questions view, and hammer j 25 times.
 	m := Model{}
 	updated, _ := m.Update(resultMsg{report: r, raw: fixedRaw()})
 	m = updated.(Model)
 	m = press(m, "2") // questions view
-	for range 20 {
+	for range 25 {
 		m = press(m, "j")
 	}
-	if m.selected != 14 {
-		t.Errorf("all-15 clamp: selected=%d, want 14 (max indicator index)", m.selected)
+	if m.selected != 15 {
+		t.Errorf("all-16 clamp: selected=%d, want 15 (max indicator index)", m.selected)
 	}
 
-	// Assert every index 0..14 is rendered by the view without panic.
-	for i := range 15 {
+	// Assert every index 0..15 is rendered by the view without panic.
+	for i := range 16 {
 		out := renderQuestions(r, 100, i, false)
 		if !strings.Contains(out, "▸") {
 			t.Errorf("index %d: selection marker missing from rendered output", i)
@@ -301,9 +302,10 @@ func flatIndexOfSub(t *testing.T, r score.Report, key string) int {
 	return -1
 }
 
-// TestCategoryGradeThresholds exercises every letter-grade branch of
-// categoryGrade, including the value on each threshold boundary.
-func TestCategoryGradeThresholds(t *testing.T) {
+// TestLetterGradeThresholds exercises every letter-grade branch of
+// score.LetterGrade (the single grade authority after removing the local
+// categoryGrade alias — C7), including the value on each threshold boundary.
+func TestLetterGradeThresholds(t *testing.T) {
 	cases := []struct {
 		name  string
 		value float64
@@ -323,10 +325,10 @@ func TestCategoryGradeThresholds(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := categoryGrade(tc.value)
+			got := score.LetterGrade(tc.value)
 
 			if got != tc.want {
-				t.Errorf("categoryGrade(%.1f) = %q, want %q", tc.value, got, tc.want)
+				t.Errorf("score.LetterGrade(%.1f) = %q, want %q", tc.value, got, tc.want)
 			}
 		})
 	}

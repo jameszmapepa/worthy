@@ -8,7 +8,7 @@ not just a number.
 repohealth charmbracelet/log
 ```
 
-`repo-health` reads ~14 signals from the public GitHub API, scores each against
+`repo-health` reads ~16 signals from the public GitHub API, scores each against
 a documented formula, rolls them into a weighted composite, and layers on five
 **conditional gates** that catch the ways a naive health score gets gamed. It
 runs unauthenticated by default — no token, no secrets required.
@@ -21,27 +21,57 @@ template adds every governance doc in one commit; stale-bots fake issue-close
 times; ~71% of merged PRs are self-merged; and the xz-utils backdoor
 (CVE-2024-3094) would have scored green on every activity metric.
 
-So `repo-health` gives you **both**: the weighted composite you'd expect, **and**
-gates that flag and cap it when the underlying signals don't add up. Every
-sub-score shows its raw metric and formula, following the CHAOSS principle of
-*definitions over rankings*. The model is derived from CHAOSS, the OpenSSF
-Scorecard, and empirical open-source-survival research.
+So `repo-health` answers **both questions as first-class scores** —
+**"Will it last?"** (maintenance) and **"Will my PR land?"** (contribution) —
+each graded on its own and **capped by the gates that govern it**, not just the
+blended composite. A repo flagged "closed to newcomers" shows a depressed
+"Will my PR land?" score even when its overall activity looks healthy. You still
+get the weighted composite you'd expect, plus the gates that flag and cap it when
+the underlying signals don't add up, plus a **confidence level** so a repo with
+little data doesn't look falsely precise. Every sub-score shows its raw metric
+and formula, following the CHAOSS principle of *definitions over rankings*. The
+model is derived from CHAOSS, the OpenSSF Scorecard, and empirical
+open-source-survival research.
 
 ## The scoring model
 
-**Composite = 45% Activity + 45% Community/Governance + 10% Security/Integrity.**
+**Composite = 47.5% Activity + 45% Community/Governance + 7.5% Security/Integrity.**
 
 | Category | Indicators |
 |---|---|
-| **Activity** (45%) | commit frequency, commit recency, release cadence, issue close-ratio, PR backlog |
-| **Community** (45%) | issue first-response time (bot-filtered), PR acceptance, **newcomer merge rate**, governance docs, license |
-| **Security** (10%) | CI present, signed releases, security policy, workflow `pull_request_target` safety |
+| **Activity** (47.5%) | commit frequency, commit recency, release cadence, issue close-ratio, PR backlog |
+| **Community** (45%) | newcomer merge rate (.25), issue first-response time / bot-filtered (.20), PR acceptance (.15), governance docs (.15), license (.10), **open-PR responsiveness** (.10), **newcomer signals** / good-first-issue & help-wanted (.05) |
+| **Security** (7.5%) | CI present, signed releases, security policy, workflow `pull_request_target` safety |
+
+Security is held at a modest weight because most of its signals can't be assessed
+without authentication; the integrity *gate* (not this category weight) is what
+catches the xz pattern.
 
 Letter grade (A/B/C/D/F) is applied to the **gate-adjusted** composite.
 
+**Open-PR responsiveness** closes the ghosting blind spot: counting only *closed*
+PRs lets a maintainer who leaves newcomer PRs open forever look fine, so the score
+also reads open-PR median age and stale (>30d) newcomer PRs. **Newcomer signals**
+rewards curated entry points (`good first issue` / `help wanted`) at modest weight.
+
+### The two questions
+
+Beyond the blended composite, each report carries two gate-adjusted scores:
+
+- **Will it last?** — the Activity score, capped by the **stale/archived** and
+  **bus-factor** gates (a stale or single-maintainer project can't grade well on
+  longevity no matter how its history looks).
+- **Will my PR land?** — the Community score, capped by the **closed-to-newcomers**
+  gate.
+
+A **confidence** level (High / Medium / Low) reports how many sub-scores fell back
+to neutral defaults for lack of data, so a brand-new or low-traffic repo is flagged
+rather than scored as if its sparse signals were definitive.
+
 ### Gates (flag and cap the score)
 
-- **Bus factor** — one contributor authored >80% of recent commits (caps at 70).
+- **Bus factor** — one contributor authored >80% of recent commits and the pool
+  is ≤4 contributors (caps at 70; also caps "Will it last?").
 - **Closed to strangers** — high overall PR acceptance but ~zero newcomer merges,
   the dead-but-busy founder-self-merge pattern (caps at 75).
 - **Stale / archived** — no push in a year, or archived/disabled. Auto-downgraded
@@ -95,11 +125,16 @@ The TUI opens on the scorecard. Switch views and interact with:
 | `enter` / `→` | open the drill-down (scorecard, questions, gauges) |
 | `esc` / `←` | close the drill-down (or quit when nothing is open) |
 | `r` | re-fetch and re-score |
+| `?` | toggle the keybinding help overlay |
 | `q` · `ctrl-c` | quit |
 
-- **Scorecard** — composite + grade, per-indicator color-coded bars, and the
-  triggered gates. Select any indicator and drill in to see its formula, raw
-  metric, weight, contribution to its category, and the gates it feeds.
+- **Scorecard** — two headline cards answering "Will it last?" and "Will my PR
+  land?" (each with its gate-adjusted grade), a confidence caveat when data is
+  thin, then the composite + grade, per-indicator color-coded bars, and the
+  triggered gates. Each bar carries a text grade alongside its color so meaning
+  survives in monochrome / `NO_COLOR` terminals. Select any indicator and drill in
+  to see its formula, raw metric, weight, contribution to its category, and the
+  gates it feeds.
 - **Questions** — the two questions a contributor asks — "Will it last?"
   (Activity) and "Will my PR land?" (Community) — as best-to-worst bars under a
   per-question verdict, plus a separate "Supply-chain integrity" section for the
@@ -136,35 +171,35 @@ internal/tui/       Bubble Tea v2 UI: four views + drill-down on scorecard, ques
 docs/SPEC.md        the design contract (metrics, formulas, weights, endpoints)
 ```
 
-Built with [Bubble Tea](https://github.com/charmbracelet/bubbletea),
-[Lip Gloss](https://github.com/charmbracelet/lipgloss), and
-[ntcharts](https://github.com/NimbleMarkets/ntcharts).
+Built with [Bubble Tea](https://github.com/charmbracelet/bubbletea) and
+[Lip Gloss](https://github.com/charmbracelet/lipgloss). Sparklines and bars are
+hand-rolled from Unicode block characters — no charting dependency.
 
 ## Running & developing locally
 
-Requires Go 1.26+. A `Makefile` wraps the common tasks — run `make` for the
+Requires Go 1.26+. A `Taskfile.yml` wraps the common tasks — run `task` for the
 full list:
 
 ```bash
-make run REPO=owner/repo   # run the TUI against any repo (no build step)
-make run                   # uses the default repo (charmbracelet/bubbletea)
-make build                 # compile to ./bin/repohealth
-make test-race             # full test suite with the race detector
-make cover                 # write coverage.out + coverage.html
-make check                 # fmt-check + vet + test-race (pre-commit gate)
+task run -- owner/repo   # run the TUI against any repo (no build step)
+task build               # stripped release build to ./bin/repohealth (-s -w -trimpath)
+task test:race           # full test suite with the race detector
+task cover               # total test coverage
+task size                # compare default vs stripped binary size
+task check               # vet + test:race (pre-commit gate)
 ```
 
-Without `make`, the raw equivalents are:
+Without [Task](https://taskfile.dev), the raw equivalents are:
 
 ```bash
-go run ./cmd/repohealth owner/repo   # run it locally
-go test ./... -race -cover           # full suite
+go run ./cmd/repohealth owner/repo                    # run it locally
+go test ./... -race -cover                            # full suite
 go vet ./...
-gofmt -l .
+go build -trimpath -ldflags="-s -w" ./cmd/repohealth  # stripped release build
 ```
 
-The scoring engine is pure and tested to 100%; overall package coverage is
-87–100%. Set `GITHUB_TOKEN` first to lift the unauthenticated 60 req/hr limit
+The scoring engine is pure and tested above 97%; overall package coverage is
+87–96%. Set `GITHUB_TOKEN` first to lift the unauthenticated 60 req/hr limit
 to 5,000/hr.
 
 ## Caveats

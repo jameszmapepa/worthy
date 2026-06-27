@@ -19,7 +19,6 @@ type communityResult struct {
 	healthPercentage  int
 	hasReadme         bool
 	hasContributing   bool
-	hasLicense        bool
 	hasCodeOfConduct  bool
 	hasSecurityPolicy bool
 	partial           string
@@ -62,6 +61,17 @@ type ttfrResult struct {
 	median             float64
 	recentIssuesClosed int
 	recentIssuesOpen   int
+	// A3: derived from the same issues slice — zero extra API calls.
+	goodFirstIssues  int
+	helpWantedIssues int
+	partial          string
+}
+
+// openPullsResult carries the A2 open-PR ghosting metrics.
+type openPullsResult struct {
+	openCount          int
+	medianAgeDays      float64
+	staleNewcomerCount int
 	partial            string
 }
 
@@ -101,7 +111,6 @@ func collectCommunity(gctx context.Context, c *github.Client, owner, repo string
 	out.healthPercentage = profile.HealthPercentage
 	out.hasReadme = profile.Files.Readme != nil
 	out.hasContributing = profile.Files.Contributing != nil
-	out.hasLicense = profile.Files.License != nil
 	out.hasCodeOfConduct = profile.Files.CodeOfConduct != nil
 	out.hasSecurityPolicy = profile.Files.SecurityPol != nil
 	return nil
@@ -230,9 +239,10 @@ func collectTTFR(gctx context.Context, c *github.Client, owner, repo string, sem
 		return err // context error only
 	}
 	out.median = median
-	// Derive the 90-day issue creation cohort from the same slice — no extra
-	// API call. If this fetch failed we stay at zero (neutral via ratioScore).
+	// Derive the 90-day issue creation cohort and newcomer label counts from
+	// the same slice — no extra API calls.
 	out.recentIssuesClosed, out.recentIssuesOpen = issueCreationCohort(issues, now)
+	out.goodFirstIssues, out.helpWantedIssues = countLabels(issues)
 	return nil
 }
 
@@ -297,4 +307,28 @@ func prCreationCohort(prs []github.PullRequest, now time.Time) (merged, open int
 		}
 	}
 	return merged, open
+}
+
+// collectOpenPulls fetches the first page (100) of open PRs and computes
+// OpenPRCount, MedianOpenPRAgeDays, and StaleNewcomerOpenPRs. These three
+// metrics expose the open-PR ghosting signal: maintainers who leave newcomer
+// PRs open indefinitely are invisible when only closed PRs are sampled.
+// ceiling: samples up to 100 open PRs (one page); repos with >100 open PRs
+// will under-count stale newcomer PRs but the signal is directionally correct.
+func collectOpenPulls(gctx context.Context, c *github.Client, owner, repo string, sem *semaphore.Weighted, now time.Time, out *openPullsResult) error {
+	var prs []github.PullRequest
+	err := withCall(gctx, sem, func() error {
+		p, e := c.RecentPulls(gctx, owner, repo, "open")
+		prs = p
+		return e
+	})
+	if err != nil {
+		if isContextError(err) {
+			return err
+		}
+		out.partial = "open_pulls"
+		return nil
+	}
+	out.openCount, out.medianAgeDays, out.staleNewcomerCount = processOpenPulls(prs, now)
+	return nil
 }

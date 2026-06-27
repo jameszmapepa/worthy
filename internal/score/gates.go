@@ -62,10 +62,23 @@ func evaluateGates(raw RawMetrics, rawComposite float64, subs subLookup) []Gate 
 	return gates
 }
 
+// busFactorGateThreshold is the contributor-count ceiling at or below which
+// the bus_factor gate fires. Changed from 2 to 4 (B5): the original threshold
+// of ≤2 was too easy to defeat — two throwaway alt-account commits could push
+// the count to 3 and sidestep the gate entirely. Four is still definitively a
+// "dangerously small pool" and correctly captures the three-person team where
+// one author still holds >80% of commits.
+const busFactorGateThreshold = 4
+
 // busFactorGate fires when a single contributor dominates recent commits and
-// the contributor pool is tiny.
+// the contributor pool is dangerously small (see busFactorGateThreshold).
+// The gate caps the composite via applyCaps (like every CapTo gate) AND is
+// routed to cap the Maintained question score (B2), so sustainability risk
+// depresses the "Will it last?" answer directly rather than being diluted into
+// the blended grade. A solo dev committing daily IS maintaining the project;
+// the risk is sustainability, not current activity.
 func busFactorGate(raw RawMetrics) (Gate, bool) {
-	if raw.TopContributorRecentShare > 0.80 && raw.ContributorCount <= 2 {
+	if raw.TopContributorRecentShare > 0.80 && raw.ContributorCount <= busFactorGateThreshold {
 		return Gate{
 			Key:        "bus_factor",
 			Severity:   SeverityWarn,

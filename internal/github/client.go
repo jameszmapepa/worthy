@@ -197,15 +197,21 @@ func (c *Client) getRaw(ctx context.Context, path string) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("request %s: %w", path, err)
 	}
-	_, body, err := drain(resp)
+	header, body, err := drain(resp)
 	if err != nil {
 		return nil, fmt.Errorf("read body for %s: %w", path, err)
 	}
-	switch resp.StatusCode {
-	case http.StatusOK:
+	switch {
+	case resp.StatusCode == http.StatusOK:
 		return body, nil
-	case http.StatusNotFound:
+	case resp.StatusCode == http.StatusNotFound:
 		return nil, &NotFoundError{Endpoint: path}
+	case isRateLimited(resp.StatusCode, header):
+		// A rate-limit on a raw file fetch must be surfaced as *RateLimitError
+		// so callers can distinguish it from a generic partial failure. Without
+		// this, a 403+remaining:0 during workflow-file fetches was swallowed and
+		// misreported as an unknown server error.
+		return nil, rateLimitError(header, path)
 	default:
 		return nil, fmt.Errorf("github %s returned %d: %s", path, resp.StatusCode, snippet(body))
 	}

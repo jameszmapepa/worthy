@@ -108,6 +108,13 @@ var (
 	errStyle   = lipgloss.NewStyle().Foreground(colorRed).Bold(true)
 )
 
+// questionCardStyle frames each question-answer headline card with a thick
+// border so the two core answers are visually dominant above the detail panels.
+var questionCardStyle = lipgloss.NewStyle().
+	Border(lipgloss.ThickBorder()).
+	BorderForeground(colorAccent).
+	Padding(0, 2)
+
 // severityStyle returns the glyph and color for a gate severity.
 func severityGlyph(severity string) (string, color.Color) {
 	switch severity {
