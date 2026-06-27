@@ -13,6 +13,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/charmbracelet/x/ansi"
 	"github.com/jameszmapepa/repo-health/internal/github"
 	"github.com/jameszmapepa/repo-health/internal/score"
 	"golang.org/x/sync/errgroup"
@@ -74,6 +75,7 @@ func Collect(ctx context.Context, c *github.Client, owner, repo string, now time
 		rels     releaseResult
 		flows    workflowResult
 		closedPR closedPullsResult
+		openPR   openPullsResult
 		ttfr     ttfrResult
 		prCohort prCohortResult
 	)
@@ -84,6 +86,7 @@ func Collect(ctx context.Context, c *github.Client, owner, repo string, now time
 	g.Go(func() error { return collectReleases(gctx, c, owner, repo, sem, now, &rels) })
 	g.Go(func() error { return collectWorkflows(gctx, c, owner, repo, sem, &flows) })
 	g.Go(func() error { return collectClosedPulls(gctx, c, owner, repo, sem, now, &closedPR) })
+	g.Go(func() error { return collectOpenPulls(gctx, c, owner, repo, sem, now, &openPR) })
 	g.Go(func() error { return collectTTFR(gctx, c, owner, repo, sem, now, &ttfr) })
 	g.Go(func() error { return collectPRCohort(gctx, c, owner, repo, sem, now, &prCohort) })
 
@@ -91,23 +94,29 @@ func Collect(ctx context.Context, c *github.Client, owner, repo string, now time
 		return raw, err
 	}
 
-	assemble(&raw, &comm, &contrib, &commits, &rels, &flows, &closedPR, &ttfr, &prCohort)
+	assemble(&raw, &comm, &contrib, &commits, &rels, &flows, &closedPR, &openPR, &ttfr, &prCohort)
 	return raw, nil
 }
 
 // applyRepo copies the core repository fields onto raw.
+// A1: Description, Language, and LicenseSPDX come from the untrusted GitHub
+// API and are later rendered raw into the terminal. Strip ANSI/OSC escape
+// sequences at the ingestion boundary so control codes (screen clear, OSC-8
+// hyperlinks, title changes) cannot reach the terminal regardless of how the
+// TUI renders these strings.
 func applyRepo(raw *score.RawMetrics, repoData *github.Repo, now time.Time) {
 	raw.Stars = repoData.Stargazers
 	raw.Watchers = repoData.Watchers
 	raw.Forks = repoData.Forks
+	raw.Fork = repoData.Fork // A4: plumb fork flag through to RawMetrics
 	raw.Archived = repoData.Archived
 	raw.Disabled = repoData.Disabled
-	raw.Description = repoData.Description
-	raw.Language = repoData.Language
+	raw.Description = ansi.Strip(repoData.Description)
+	raw.Language = ansi.Strip(repoData.Language)
 	raw.DaysSinceLastPush = int(now.Sub(repoData.PushedAt).Hours() / 24)
 	raw.RepoAgeDays = int(now.Sub(repoData.CreatedAt).Hours() / 24)
 	if repoData.License != nil {
-		raw.LicenseSPDX = repoData.License.SPDXID
+		raw.LicenseSPDX = ansi.Strip(repoData.License.SPDXID)
 	}
 }
 
@@ -122,6 +131,7 @@ func assemble(
 	rels *releaseResult,
 	flows *workflowResult,
 	closedPR *closedPullsResult,
+	openPR *openPullsResult,
 	ttfr *ttfrResult,
 	prCohort *prCohortResult,
 ) {
@@ -129,7 +139,6 @@ func assemble(
 		raw.HealthPercentage = comm.healthPercentage
 		raw.HasReadme = comm.hasReadme
 		raw.HasContributing = comm.hasContributing
-		raw.HasLicense = comm.hasLicense
 		raw.HasCodeOfConduct = comm.hasCodeOfConduct
 		raw.HasSecurityPolicy = comm.hasSecurityPolicy
 	}
@@ -146,9 +155,16 @@ func assemble(
 	raw.ClosedUnmergedPRs = closedPR.unmerged
 	raw.NewcomerPRsMerged = closedPR.newcomerMerged
 	raw.NewcomerPRsClosedUnmerged = closedPR.newcomerUnmerged
+	// A2: open-PR ghosting metrics.
+	raw.OpenPRCount = openPR.openCount
+	raw.MedianOpenPRAgeDays = openPR.medianAgeDays
+	raw.StaleNewcomerOpenPRs = openPR.staleNewcomerCount
 	raw.MedianIssueFirstResponseHours = ttfr.median
 	raw.RecentIssuesClosed = ttfr.recentIssuesClosed
 	raw.RecentIssuesOpen = ttfr.recentIssuesOpen
+	// A3: newcomer label counts derived from the issues slice.
+	raw.GoodFirstIssues = ttfr.goodFirstIssues
+	raw.HelpWantedIssues = ttfr.helpWantedIssues
 	raw.RecentPRsMerged = prCohort.recentPRsMerged
 	raw.RecentPRsOpen = prCohort.recentPRsOpen
 
@@ -159,6 +175,7 @@ func assemble(
 	appendPartial(raw, rels.partial)
 	appendPartial(raw, flows.partial)
 	appendPartial(raw, closedPR.partial)
+	appendPartial(raw, openPR.partial)
 	appendPartial(raw, ttfr.partial)
 	appendPartial(raw, prCohort.partial)
 }

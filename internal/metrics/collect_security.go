@@ -1,6 +1,7 @@
 package metrics
 
 import (
+	"bytes"
 	"context"
 	"strings"
 
@@ -91,7 +92,7 @@ func processWorkflows(
 			continue
 		}
 		fetched = true
-		if strings.Contains(string(body), "pull_request_target") {
+		if bytes.Contains(body, []byte("pull_request_target")) { // A6: avoid string copy
 			usesPRT = true
 		}
 	}

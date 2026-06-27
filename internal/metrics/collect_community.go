@@ -2,7 +2,7 @@ package metrics
 
 import (
 	"context"
-	"sort"
+	"slices"
 	"strings"
 	"time"
 
@@ -140,10 +140,109 @@ func medianTTFR(
 	if len(hours) == 0 {
 		return 0, nil
 	}
-	sort.Float64s(hours)
+	slices.Sort(hours) // A10: slices.Sort replaces sort.Float64s (stdlib, 1.21+)
 	mid := len(hours) / 2
 	if len(hours)%2 == 0 {
 		return (hours[mid-1] + hours[mid]) / 2, nil
 	}
 	return hours[mid], nil
+}
+
+// staleOpenPRNewcomerAssocs is the set of author_association values that
+// qualify an open-PR author as a newcomer for the stale-open-PR metric.
+// FIRST_TIMER is GitHub's label for a user's very first PR on any repository.
+// CONTRIBUTOR is treated as a newcomer proxy — distinguishing a CONTRIBUTOR
+// with no prior merged PR from one with merged PRs requires per-user history
+// queries outside our API budget.
+var staleOpenPRNewcomerAssocs = map[string]bool{
+	"FIRST_TIME_CONTRIBUTOR": true,
+	"FIRST_TIMER":            true,
+	"NONE":                   true,
+	"CONTRIBUTOR":            true,
+}
+
+// staleThreshold is the age beyond which an open newcomer PR is considered
+// ghosted (opened but not yet acknowledged by a maintainer).
+const staleThreshold = 30 * 24 * time.Hour
+
+// processOpenPulls computes the three open-PR ghosting metrics from a page of
+// open PRs. It is intentionally defensive: the API may return non-open items
+// when state filtering misbehaves, so each PR is checked for State=="open".
+// ceiling: median and stale count are derived from ≤100 PRs (one API page);
+// repos with >100 open PRs will under-count stale newcomer PRs.
+func processOpenPulls(prs []github.PullRequest, now time.Time) (openCount int, medianAgeDays float64, staleNewcomerCount int) {
+	ages := make([]float64, 0, len(prs))
+	for _, pr := range prs {
+		if pr.State != "open" {
+			continue
+		}
+		ageDays := now.Sub(pr.CreatedAt).Hours() / 24
+		ages = append(ages, ageDays)
+		openCount++
+		if staleOpenPRNewcomerAssocs[pr.AuthorAssoc] && ageDays > 30 {
+			staleNewcomerCount++
+		}
+	}
+	if len(ages) == 0 {
+		return 0, 0, 0
+	}
+	slices.Sort(ages)
+	mid := len(ages) / 2
+	if len(ages)%2 == 0 {
+		medianAgeDays = (ages[mid-1] + ages[mid]) / 2
+	} else {
+		medianAgeDays = ages[mid]
+	}
+	return openCount, medianAgeDays, staleNewcomerCount
+}
+
+// goodFirstLabelNames and helpWantedLabelNames are the canonical downcased
+// label names we match for newcomer-friendliness. Repos use both the spaced
+// and hyphenated variants interchangeably; we accept both after downcasing.
+var (
+	goodFirstLabelNames  = [2]string{"good first issue", "good-first-issue"}
+	helpWantedLabelNames = [2]string{"help wanted", "help-wanted"}
+)
+
+// countLabels counts open, non-PR issues that carry one of the canonical
+// newcomer-friendliness labels.  It derives entirely from the already-fetched
+// issues slice — zero extra API calls. Approach: the existing collectTTFR
+// fetches state=all issues (up to 100, sort=created desc); we filter for open
+// non-PR issues and match labels after downcasing the label name. Counts are
+// capped at 100 matching the page limit so callers can treat them as bounded.
+// ceiling: issues created before the 100th-most-recent are not seen; increase
+// the issues fetch or add a dedicated labelled-issues call if full coverage is
+// needed.
+func countLabels(issues []github.Issue) (goodFirst, helpWanted int) {
+	for _, iss := range issues {
+		if iss.IsPullRequest() || iss.State != "open" {
+			continue
+		}
+		var countedGF, countedHW bool
+		for _, label := range iss.Labels {
+			name := strings.ToLower(label.Name)
+			if !countedGF {
+				for _, gf := range goodFirstLabelNames {
+					if name == gf {
+						goodFirst++
+						countedGF = true
+						break
+					}
+				}
+			}
+			if !countedHW {
+				for _, hw := range helpWantedLabelNames {
+					if name == hw {
+						helpWanted++
+						countedHW = true
+						break
+					}
+				}
+			}
+			if countedGF && countedHW {
+				break
+			}
+		}
+	}
+	return min(goodFirst, 100), min(helpWanted, 100)
 }

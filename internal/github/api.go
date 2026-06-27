@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/url"
+	"strings"
 )
 
 // pageSize is GitHub's maximum items-per-page for list endpoints.
@@ -83,8 +84,10 @@ func (c *Client) Workflows(ctx context.Context, owner, repo string) ([]Workflow,
 // ("open", "closed", "all"), most-recently-updated first.
 func (c *Client) RecentPulls(ctx context.Context, owner, repo, state string) ([]PullRequest, error) {
 	var ps []PullRequest
+	// A9: state is user-controlled via the public API surface; QueryEscape
+	// ensures special characters cannot inject additional query parameters.
 	path := fmt.Sprintf("/repos/%s/%s/pulls?state=%s&per_page=%d&sort=updated&direction=desc",
-		url.PathEscape(owner), url.PathEscape(repo), state, pageSize)
+		url.PathEscape(owner), url.PathEscape(repo), url.QueryEscape(state), pageSize)
 	if err := c.get(ctx, path, &ps); err != nil {
 		return nil, err
 	}
@@ -109,8 +112,9 @@ func (c *Client) RecentPullsByCreation(ctx context.Context, owner, repo string) 
 // API, also includes pull requests — callers filter with Issue.IsPullRequest).
 func (c *Client) RecentIssues(ctx context.Context, owner, repo, state string) ([]Issue, error) {
 	var is []Issue
+	// A9: QueryEscape the state parameter for the same reason as RecentPulls.
 	path := fmt.Sprintf("/repos/%s/%s/issues?state=%s&per_page=%d&sort=created&direction=desc",
-		url.PathEscape(owner), url.PathEscape(repo), state, pageSize)
+		url.PathEscape(owner), url.PathEscape(repo), url.QueryEscape(state), pageSize)
 	if err := c.get(ctx, path, &is); err != nil {
 		return nil, err
 	}
@@ -141,50 +145,18 @@ func (c *Client) FileContent(ctx context.Context, owner, repo, path string) ([]b
 
 // encodeFilePath percent-encodes each path segment while preserving the
 // slash separators so a path like ".github/workflows/ci.yml" becomes
-// ".github%2Fworkflows%2Fci.yml" only for the individual segments — we keep
-// slashes as literal "/" so the URL remains a valid path.
+// ".github/workflows/ci.yml" with each segment individually escaped but
+// slashes kept literal — url.PathEscape would encode "/" as "%2F" and break
+// the directory structure.
 func encodeFilePath(p string) string {
-	// url.PathEscape encodes "/" as "%2F" which would break the directory
-	// structure. Split on "/" and escape each segment individually.
-	segments := splitPath(p)
+	// A8: use stdlib strings.Split / strings.Join; hand-rolled splitPath and
+	// joinPath helpers deleted (they were equivalent but added surface area).
+	segments := strings.Split(p, "/")
 	escaped := make([]string, len(segments))
 	for i, seg := range segments {
 		escaped[i] = url.PathEscape(seg)
 	}
-	return joinPath(escaped)
-}
-
-// splitPath splits p on "/" without importing strings.
-func splitPath(p string) []string {
-	var parts []string
-	start := 0
-	for i := 0; i < len(p); i++ {
-		if p[i] == '/' {
-			parts = append(parts, p[start:i])
-			start = i + 1
-		}
-	}
-	parts = append(parts, p[start:])
-	return parts
-}
-
-// joinPath joins segments with "/".
-func joinPath(parts []string) string {
-	if len(parts) == 0 {
-		return ""
-	}
-	n := len(parts) - 1
-	for _, p := range parts {
-		n += len(p)
-	}
-	b := make([]byte, 0, n)
-	for i, p := range parts {
-		if i > 0 {
-			b = append(b, '/')
-		}
-		b = append(b, p...)
-	}
-	return string(b)
+	return strings.Join(escaped, "/")
 }
 
 func clampPage(n int) int {
