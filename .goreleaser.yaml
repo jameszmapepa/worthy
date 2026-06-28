@@ -1,0 +1,42 @@
+version: 2
+
+project_name: worthy
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: worthy
+    main: ./cmd/worthy
+    binary: worthy
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w
+    goos: [linux, darwin, windows]
+    goarch: [amd64, arm64]
+
+archives:
+  - id: default
+    formats: [tar.gz]
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+
+checksum:
+  name_template: checksums.txt
+
+# Release notes come from CHANGELOG.md (--release-notes in the workflow), so
+# GoReleaser's own commit-derived changelog is off.
+changelog:
+  disable: true
+
+release:
+  prerelease: auto
+  # replace lets a re-run (e.g. a re-pushed tag) overwrite existing assets
+  # instead of failing with 422 already_exists.
+  mode: replace

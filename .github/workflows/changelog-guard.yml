@@ -1,0 +1,29 @@
+name: changelog-guard
+
+on:
+  pull_request:
+    branches: [develop, main]
+
+permissions:
+  contents: read
+
+jobs:
+  changelog:
+    runs-on: ubuntu-latest
+    # Apply the 'skip-changelog' label for changes that need no changelog entry.
+    if: ${{ !contains(github.event.pull_request.labels.*.name, 'skip-changelog') }}
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0
+
+      - name: Require a CHANGELOG entry
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+        run: |
+          git fetch --no-tags --depth=1 origin "$BASE_REF"
+          if git diff --quiet "origin/$BASE_REF" -- CHANGELOG.md; then
+            echo "::error::CHANGELOG.md was not updated. Add an entry under '## [Unreleased]', or apply the 'skip-changelog' label."
+            exit 1
+          fi
+          echo "CHANGELOG.md updated — OK."
