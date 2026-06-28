@@ -1,0 +1,49 @@
+name: demo
+
+# Manual: renders the TUI demo GIF from demo.tape and commits it back.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  vhs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Install worthy
+        run: |
+          go install ./cmd/worthy
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+
+      # charmbracelet/vhs-action is unmaintained (latest v2.1.0, 2024) and its
+      # bundled ffmpeg provisioning fails on current runners, so install the VHS
+      # toolchain directly: ffmpeg + ttyd (VHS's terminal) + vhs itself.
+      - name: Install VHS toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+          sudo curl -fsSL -o /usr/local/bin/ttyd \
+            https://github.com/tsl0922/ttyd/releases/download/1.7.7/ttyd.x86_64
+          sudo chmod +x /usr/local/bin/ttyd
+          go install github.com/charmbracelet/vhs@v0.11.0
+
+      # The token lifts the API rate limit to 5,000/hr so the recorded run does
+      # not flake on the unauthenticated 60/hr cap.
+      - name: Render demo
+        run: vhs demo.tape
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Commit demo.gif
+        uses: stefanzweifel/git-auto-commit-action@04702edda442b2e678b25b537cec683a1493fcb9 # v7.1.0
+        with:
+          commit_message: "Update demo recording [skip ci]"
+          file_pattern: demo.gif
