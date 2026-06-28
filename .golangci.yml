@@ -1,0 +1,101 @@
+# golangci-lint v2 config. Drop into <project>/.golangci.yml
+# Migration from v1: https://golangci-lint.run/product/migration-guide/
+
+version: "2"
+
+run:
+  timeout: 5m
+  go: "1.26"
+  modules-download-mode: readonly
+  tests: true
+
+linters:
+  default: standard           # use the curated default set
+  enable:
+    - bodyclose               # unclosed http response bodies
+    - copyloopvar             # 1.22+ loop var fix verifier
+    - errcheck                # unchecked errors
+    - errorlint               # error wrapping correctness
+    - gocritic                # opinionated lints
+    - gosec                   # security
+    - intrange                # 1.22+ range over int
+    - misspell                # common typos
+    - nakedret                # naked returns hurt readability
+    - nilnesserr              # nil error returns + nil result
+    - noctx                   # missing context propagation
+    - prealloc                # slice pre-allocation
+    - revive                  # pylint-style; replace golint
+    - sloglint                # slog API correctness
+    - testifylint             # testify usage correctness
+    - unconvert               # unnecessary type conversions
+    - unparam                 # unused function parameters
+    - usestdlibvars           # use stdlib constants
+    - usetesting              # t.TempDir, t.Setenv etc.
+    - wastedassign            # wasted assignments
+    # wsl_v5 deliberately disabled: it flagged 445 pure-whitespace placements
+    # with no correctness value, and gofumpt (below) already enforces consistent
+    # formatting. Re-enable if you want enforced blank-line placement.
+    # govet-modernize aligns with go fix; enable once stable in your version
+    # - govet-modernize
+
+  settings:
+    errcheck:
+      check-blank: true
+      exclude-functions:
+        - (io.Closer).Close
+        - (*os.File).Close
+
+    govet:
+      enable-all: true
+      disable:
+        - fieldalignment       # noisy; enable per-project if you want it
+
+    gosec:
+      excludes:
+        - G115                 # int conversions — too noisy in most code
+
+    revive:
+      rules:
+        - name: var-naming
+        - name: package-comments
+        - name: exported
+        - name: error-return
+        - name: error-strings
+        - name: error-naming
+        - name: receiver-naming
+        - name: increment-decrement
+        - name: range
+        - name: time-naming
+        - name: unexported-return
+
+    sloglint:
+      no-mixed-args: true
+      kv-only: false
+      attr-only: false
+      no-global: "all"         # discourage slog.Default() in libs
+      context: "scope"         # require context in slog calls
+
+  exclusions:
+    rules:
+      - path: _test\.go
+        linters: [errcheck, gosec, noctx, unparam]
+
+formatters:
+  enable:
+    - gofumpt                  # stricter than gofmt
+    - gci                      # import grouping
+
+  settings:
+    gci:
+      sections:
+        - standard
+        - default
+        - prefix(github.com/jameszmapepa)
+      custom-order: true
+
+    gofumpt:
+      extra-rules: true
+
+issues:
+  max-same-issues: 0           # report all
+  max-issues-per-linter: 0
