@@ -33,6 +33,14 @@ jobs:
           ' CHANGELOG.md > RELEASE_NOTES.md
           echo "Notes for ${version}:"; cat RELEASE_NOTES.md
 
+      # Delete any existing release for this tag so GoReleaser creates a fresh
+      # one; avoids the 422 already_exists error when a release was published
+      # for this tag before (e.g. after the tag is moved).
+      - name: Remove any existing release for this tag
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release delete "$GITHUB_REF_NAME" --yes 2>/dev/null || true
+
       - uses: goreleaser/goreleaser-action@5daf1e915a5f0af01ddbcd89a43b8061ff4f1a89 # v7.2.2
         with:
           distribution: goreleaser
@@ -40,3 +48,10 @@ jobs:
           args: release --clean --release-notes=RELEASE_NOTES.md
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # GoReleaser's --release-notes does not reliably populate the release body,
+      # so set it explicitly to guarantee the notes are never empty.
+      - name: Set release notes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release edit "$GITHUB_REF_NAME" --notes-file RELEASE_NOTES.md
