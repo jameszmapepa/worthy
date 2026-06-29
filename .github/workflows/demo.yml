@@ -1,11 +1,13 @@
 name: demo
 
-# Manual: renders the TUI demo GIF from demo.tape and commits it back.
+# Manual: renders the TUI demo GIF from demo.tape and opens a PR with it.
+# develop is protected, so the bot opens a PR instead of pushing directly.
 on:
   workflow_dispatch:
 
 permissions:
   contents: write
+  pull-requests: write
 
 jobs:
   vhs:
@@ -42,8 +44,12 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Commit demo.gif
-        uses: stefanzweifel/git-auto-commit-action@04702edda442b2e678b25b537cec683a1493fcb9 # v7.1.0
+      - name: Open a PR with the demo recording
+        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
         with:
-          commit_message: "Update demo recording [skip ci]"
-          file_pattern: demo.gif
+          add-paths: demo.gif
+          branch: chore/update-demo
+          delete-branch: true
+          commit-message: Update the demo recording
+          title: Update the demo recording
+          body: Regenerated `demo.gif` from `demo.tape` via the demo workflow.
