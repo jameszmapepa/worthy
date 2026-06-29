@@ -1,0 +1,46 @@
+# Contributing to worthy
+
+Thanks for helping improve `worthy`. Here's how to get a change merged.
+
+## Getting started
+
+Requires **Go 1.26+**.
+
+```bash
+git clone https://github.com/jameszmapepa/worthy
+cd worthy
+make run REPO=charmbracelet/bubbletea   # try it against any public repo
+```
+
+Run `make` (or `make help`) for every developer task.
+
+## Workflow
+
+This project uses [Gitflow](https://nvie.com/posts/a-successful-git-branching-model/):
+branch from `develop` (`feature/<name>` or `fix/<name>`) and open the pull request
+against `develop`. `main` carries tagged releases only.
+
+## Before you open a PR
+
+Keep the local gate green:
+
+```bash
+make check   # gofmt + go vet + golangci-lint + race-enabled tests
+```
+
+`make check` and CI use [golangci-lint](https://golangci-lint.run) v2; install it
+once with `go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2`.
+
+- New behavior needs tests. Hold coverage where it is — the scoring engine near
+  97%, the other packages 87–96%.
+- Keep `internal/score` pure and network-free so it stays deterministically
+  testable.
+- Match the house style: small focused files, comments that say *why* not *how*,
+  immutable data, and no emojis anywhere.
+- User-facing changes get a `CHANGELOG.md` entry under `## [Unreleased]`
+  ([Keep a Changelog](https://keepachangelog.com/en/1.1.0/)); a CI guard enforces it.
+
+## Reporting bugs
+
+Open an [issue](https://github.com/jameszmapepa/worthy/issues). For bugs, include
+the repo you ran `worthy` against and the output you saw.
