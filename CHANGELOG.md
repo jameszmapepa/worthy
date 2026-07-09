@@ -11,6 +11,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Automatic release tagging: merging a changelog version bump to `main` tags
   the release and publishes it via the existing GoReleaser workflow.
+- Release publishing is gated behind the `release` environment: the GoReleaser
+  job waits for maintainer approval in the Actions UI before anything is
+  published, on both the auto-tag and manual tag-push paths.
 
 ### Changed
 
