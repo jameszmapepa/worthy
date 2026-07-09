@@ -11,8 +11,10 @@ jobs:
   changelog:
     runs-on: ubuntu-latest
     # Skip for Dependabot (it never writes a changelog entry); for other PRs that
-    # need no entry, apply the 'skip-changelog' label.
-    if: ${{ github.actor != 'dependabot[bot]' && !contains(github.event.pull_request.labels.*.name, 'skip-changelog') }}
+    # need no entry, apply the 'skip-changelog' label. Keyed on the PR author,
+    # not github.actor: "Update branch" makes the clicker the actor, which would
+    # defeat the exemption.
+    if: ${{ github.event.pull_request.user.login != 'dependabot[bot]' && !contains(github.event.pull_request.labels.*.name, 'skip-changelog') }}
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:

@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- The changelog guard's Dependabot exemption now keys on the PR author instead
+  of the workflow actor, so "Update branch" on a Dependabot PR no longer makes
+  the check fail.
+
 ## [0.1.0] - 2026-06-28
 
 First tagged release: a terminal UI that scores the health of a public GitHub
