@@ -1,12 +1,7 @@
 name: tag-release
 
-# Releases are cut from the changelog: merging a PR that promotes
-# '## [Unreleased]' to '## [x.y.z] - date' tags vx.y.z on main and runs the
-# release workflow. Any other CHANGELOG edit is a no-op because the tag for
-# the topmost version already exists.
-#
-# The release job is invoked via workflow_call rather than relying on the tag
-# push: tags pushed with GITHUB_TOKEN never trigger other workflows.
+# workflow_call, not the tag-push trigger: tags pushed with GITHUB_TOKEN
+# never trigger other workflows.
 on:
   push:
     branches: [main]
