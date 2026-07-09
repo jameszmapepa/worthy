@@ -24,9 +24,11 @@ against `main`. Keep branches short-lived and PRs small.
 
 Releases are cut from the changelog. Open a PR that promotes the
 `## [Unreleased]` section to `## [x.y.z] - YYYY-MM-DD`; when it merges, the
-`tag-release` workflow tags `vx.y.z` on `main` and publishes the GitHub
-Release (binaries via GoReleaser, notes from that changelog section)
-automatically. Versions follow [SemVer](https://semver.org/spec/v2.0.0.html).
+`tag-release` workflow tags `vx.y.z` on `main` and starts the release
+workflow (binaries via GoReleaser, notes from that changelog section).
+Publishing waits in the `release` environment until the maintainer approves
+the run in the Actions UI. Versions follow
+[SemVer](https://semver.org/spec/v2.0.0.html).
 
 ## Before you open a PR
 
