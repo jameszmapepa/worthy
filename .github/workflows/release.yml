@@ -1,7 +1,5 @@
 name: release
 
-# Normally invoked by tag-release.yml after it tags a changelog version bump
-# on main. The tag-push trigger remains for manual tags and re-releases.
 on:
   push:
     tags:
@@ -22,9 +20,7 @@ env:
 jobs:
   goreleaser:
     runs-on: ubuntu-latest
-    # Publishing requires manual approval: the 'release' environment has a
-    # required reviewer, so this job waits in the Actions UI until approved.
-    # Covers both the tag-release path and manual tag pushes.
+    # Required reviewer on the 'release' environment gates this job.
     environment: release
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -64,8 +60,7 @@ jobs:
           args: release --clean --release-notes=RELEASE_NOTES.md
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Explicit so the workflow_call path releases the right tag even
-          # though the run was not triggered by the tag ref itself.
+          # Explicit: the workflow_call path isn't triggered by the tag ref.
           GORELEASER_CURRENT_TAG: ${{ inputs.tag || github.ref_name }}
 
       # GoReleaser's --release-notes does not reliably populate the release body,
