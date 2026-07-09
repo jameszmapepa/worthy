@@ -16,9 +16,17 @@ Run `make` (or `make help`) for every developer task.
 
 ## Workflow
 
-This project uses [Gitflow](https://nvie.com/posts/a-successful-git-branching-model/):
-branch from `develop` (`feature/<name>` or `fix/<name>`) and open the pull request
-against `develop`. `main` carries tagged releases only.
+This project uses [GitHub Flow](https://docs.github.com/en/get-started/using-github/github-flow):
+branch from `main` (`feature/<name>` or `fix/<name>`) and open the pull request
+against `main`. Keep branches short-lived and PRs small.
+
+## Releasing
+
+Releases are cut from the changelog. Open a PR that promotes the
+`## [Unreleased]` section to `## [x.y.z] - YYYY-MM-DD`; when it merges, the
+`tag-release` workflow tags `vx.y.z` on `main` and publishes the GitHub
+Release (binaries via GoReleaser, notes from that changelog section)
+automatically. Versions follow [SemVer](https://semver.org/spec/v2.0.0.html).
 
 ## Before you open a PR
 
