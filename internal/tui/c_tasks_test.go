@@ -163,7 +163,7 @@ func TestC7BarVisibleOutputIdenticalAfterRewrite(t *testing.T) {
 	cases := []struct {
 		value float64
 		width int
-		want  int // expected filled cells
+		want  int
 	}{
 		{0, 20, 0},
 		{50, 20, 10},
