@@ -1,7 +1,7 @@
 # worthy
 
 [![CI](https://github.com/jameszmapepa/worthy/actions/workflows/ci.yml/badge.svg)](https://github.com/jameszmapepa/worthy/actions/workflows/ci.yml)
-![Version](https://img.shields.io/badge/version-0.1.0-blue)
+![Version](https://img.shields.io/badge/version-0.2.0-blue)
 ![Go](https://img.shields.io/badge/go-1.26%2B-00ADD8)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
@@ -138,5 +138,5 @@ the [OpenSSF Scorecard](https://github.com/ossf/scorecard), and empirical
 open-source-survival research. Built with the [Charm](https://charm.sh/) stack
 (Bubble Tea + Lip Gloss).
 
-> **Status:** active, pre-1.0 (`v0.1.0`) — the scoring model and TUI may still
+> **Status:** active, pre-1.0 (`v0.2.0`) — the scoring model and TUI may still
 > change between minor versions while the public contract stabilizes.
