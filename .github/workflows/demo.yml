@@ -1,7 +1,7 @@
 name: demo
 
 # Manual: renders the TUI demo GIF from demo.tape and opens a PR with it.
-# develop is protected, so the bot opens a PR instead of pushing directly.
+# main is protected, so the bot opens a PR instead of pushing directly.
 on:
   workflow_dispatch:
 

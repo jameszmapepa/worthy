@@ -126,7 +126,8 @@ See [`CHANGELOG.md`](CHANGELOG.md) for released changes.
 ## Contributing
 
 Contributions are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md) for the
-development loop, the quality gate (`make check`), and the branching model.
+development loop, the quality gate (`make check`), and the branching model
+(GitHub Flow: branch from `main`, PR to `main`).
 Report bugs or request features at
 [Issues](https://github.com/jameszmapepa/worthy/issues).
 

@@ -1,12 +1,23 @@
 name: release
 
+# Normally invoked by tag-release.yml after it tags a changelog version bump
+# on main. The tag-push trigger remains for manual tags and re-releases.
 on:
   push:
     tags:
       - "v*"
+  workflow_call:
+    inputs:
+      tag:
+        description: Existing v-prefixed tag to release (e.g. v0.2.0)
+        required: true
+        type: string
 
 permissions:
   contents: write
+
+env:
+  TAG: ${{ inputs.tag || github.ref_name }}
 
 jobs:
   goreleaser:
@@ -14,6 +25,7 @@ jobs:
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
+          ref: ${{ inputs.tag || github.ref }}
           fetch-depth: 0
 
       - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
@@ -25,7 +37,7 @@ jobs:
       # notes match the curated changelog rather than raw commit logs.
       - name: Extract release notes
         run: |
-          version="${GITHUB_REF_NAME#v}"
+          version="${TAG#v}"
           awk -v v="$version" '
             $0 ~ "^## \\[" v "\\]" { flag=1; next }
             /^## \[/ && flag { exit }
@@ -39,7 +51,7 @@ jobs:
       - name: Remove any existing release for this tag
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release delete "$GITHUB_REF_NAME" --yes 2>/dev/null || true
+        run: gh release delete "$TAG" --yes 2>/dev/null || true
 
       - uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
         with:
@@ -48,10 +60,13 @@ jobs:
           args: release --clean --release-notes=RELEASE_NOTES.md
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Explicit so the workflow_call path releases the right tag even
+          # though the run was not triggered by the tag ref itself.
+          GORELEASER_CURRENT_TAG: ${{ inputs.tag || github.ref_name }}
 
       # GoReleaser's --release-notes does not reliably populate the release body,
       # so set it explicitly to guarantee the notes are never empty.
       - name: Set release notes
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release edit "$GITHUB_REF_NAME" --notes-file RELEASE_NOTES.md
+        run: gh release edit "$TAG" --notes-file RELEASE_NOTES.md

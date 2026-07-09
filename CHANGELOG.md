@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Automatic release tagging: merging a changelog version bump to `main` tags
+  the release and publishes it via the existing GoReleaser workflow.
+
+### Changed
+
+- Switched the branching model from Gitflow to GitHub Flow: `main` is the
+  only long-lived branch and the default; `develop` is retired.
+
 ### Fixed
 
 - The changelog guard's Dependabot exemption now keys on the PR author instead
