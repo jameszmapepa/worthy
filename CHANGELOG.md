@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Dependabot patch and minor updates queue themselves for auto-merge once the
+  required checks pass; majors still wait for a human.
+
 ## [0.2.0] - 2026-07-09
 
 ### Added
