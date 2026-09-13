@@ -175,7 +175,8 @@ func collectCommits(gctx context.Context, c *github.Client, owner, repo string, 
 func collectNewcomerLabels(gctx context.Context, c *github.Client, owner, repo string, sem *semaphore.Weighted, out *newcomerLabelResult) error {
 	base := fmt.Sprintf(
 		`repo:%s/%s is:issue is:open label:"good first issue","good-first-issue","help wanted","help-wanted"`,
-		owner, repo)
+		owner, repo,
+	)
 
 	var open int
 	openErr := withCall(gctx, sem, func() error {

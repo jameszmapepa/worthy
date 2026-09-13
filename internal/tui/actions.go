@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"context"
 	"fmt"
 	"net/url"
 	"os/exec"
@@ -57,15 +58,20 @@ func (m Model) openCmd() tea.Cmd {
 }
 
 // openInBrowser hands the URL to the platform opener without waiting for it.
+// The binary is fixed per platform and u is built from the validated
+// owner/repo pair, so there is no user-controlled command text.
 func openInBrowser(u string) error {
+	// The opener is detached, so a background context is the honest choice:
+	// there is nothing to cancel once it has been handed the URL.
+	ctx := context.Background()
 	var cmd *exec.Cmd
 	switch runtime.GOOS {
 	case "darwin":
-		cmd = exec.Command("open", u)
+		cmd = exec.CommandContext(ctx, "open", u) //nolint:gosec // fixed binary, escaped URL
 	case "windows":
-		cmd = exec.Command("rundll32", "url.dll,FileProtocolHandler", u)
+		cmd = exec.CommandContext(ctx, "rundll32", "url.dll,FileProtocolHandler", u) //nolint:gosec // fixed binary, escaped URL
 	default:
-		cmd = exec.Command("xdg-open", u)
+		cmd = exec.CommandContext(ctx, "xdg-open", u) //nolint:gosec // fixed binary, escaped URL
 	}
 	return cmd.Start()
 }

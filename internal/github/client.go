@@ -73,7 +73,12 @@ func (c *Client) RateInfo() RateInfo {
 	return c.rate
 }
 
+// recordRate keeps the core budget only: search and other resources report
+// their own, much smaller, limits on the same headers.
 func (c *Client) recordRate(h http.Header) {
+	if res := h.Get("X-RateLimit-Resource"); res != "" && res != "core" {
+		return
+	}
 	rem, err1 := strconv.Atoi(h.Get("X-RateLimit-Remaining"))
 	lim, err2 := strconv.Atoi(h.Get("X-RateLimit-Limit"))
 	if err1 != nil || err2 != nil {

@@ -110,12 +110,12 @@ func run(args []string, stdout, stderr io.Writer, stdoutIsTTY bool) error {
 		return err
 	}
 	if o.help {
-		fmt.Fprintln(stdout, usage)
-		return nil
+		_, err = fmt.Fprintln(stdout, usage)
+		return err
 	}
 	if o.version {
-		fmt.Fprintln(stdout, "worthy", version())
-		return nil
+		_, err = fmt.Fprintln(stdout, "worthy", version())
+		return err
 	}
 	owner, repo, err := parseRepoArg(o.target)
 	if err != nil {
@@ -140,7 +140,7 @@ func run(args []string, stdout, stderr io.Writer, stdoutIsTTY bool) error {
 		}
 		width := 100
 		if stdoutIsTTY {
-			if w, _, err := term.GetSize(os.Stdout.Fd()); err == nil && w > 0 {
+			if w, _, sizeErr := term.GetSize(os.Stdout.Fd()); sizeErr == nil && w > 0 {
 				width = w
 			}
 		}
@@ -165,7 +165,7 @@ func collect(ctx context.Context, client *github.Client, owner, repo string, std
 	if f, ok := stderr.(*os.File); ok && term.IsTerminal(f.Fd()) {
 		opts = append(opts, metrics.WithProgress(func(p metrics.Progress) {
 			if p.State == metrics.StageRetrying {
-				fmt.Fprintf(stderr, "worthy: %s: GitHub is computing stats, retry %d\n", p.Stage, p.Attempt)
+				_, _ = fmt.Fprintf(stderr, "worthy: %s: GitHub is computing stats, retry %d\n", p.Stage, p.Attempt) //nolint:errcheck // narration only
 			}
 		}))
 	}

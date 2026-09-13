@@ -91,7 +91,8 @@ func (d *diskCache) store(path, accept string, e *cacheEntry) {
 	_, werr := tmp.Write(b)
 	cerr := tmp.Close()
 	if werr != nil || cerr != nil || os.Chmod(tmp.Name(), 0o600) != nil || os.Rename(tmp.Name(), dst) != nil {
-		_ = os.Remove(tmp.Name())
+		// Best effort: a leftover temp file is harmless and swept next store.
+		_ = os.Remove(tmp.Name()) //nolint:errcheck // nothing useful to do on failure
 	}
 }
 

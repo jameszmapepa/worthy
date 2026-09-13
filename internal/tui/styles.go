@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 )
 
 // palette is the full colour set for one background mode. Every style below
@@ -80,6 +81,15 @@ const gradientSteps = 24
 
 var scoreGradient []color.Color
 
+// gradientSGR holds the ready-made colour escape per gradient step and
+// trackSGR the empty-track colour, so renderBar writes bytes instead of
+// building a lipgloss style per run. Bubble Tea's renderer still downsamples
+// these for the terminal's colour profile.
+var (
+	gradientSGR []string
+	trackSGR    string
+)
+
 var currentPaletteDark = true
 
 func init() { applyPalette(darkPalette, true) }
@@ -130,6 +140,11 @@ func applyPalette(p palette, dark bool) {
 		Padding(0, 2)
 
 	scoreGradient = lipgloss.Blend1D(gradientSteps, colorRed, colorAmber, colorGreen)
+	gradientSGR = make([]string, len(scoreGradient))
+	for i, c := range scoreGradient {
+		gradientSGR[i] = ansi.Style{}.ForegroundColor(c).String()
+	}
+	trackSGR = ansi.Style{}.ForegroundColor(colorTrackEmpty).String()
 }
 
 // setTheme selects the palette for a dark or light terminal background.

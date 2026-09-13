@@ -5,6 +5,8 @@ import "github.com/jameszmapepa/worthy/internal/score"
 // StageState is the lifecycle of one collection stage.
 type StageState int
 
+// Stage states, in lifecycle order; Degraded means the stage finished but
+// its metric fell back to neutral.
 const (
 	StagePending StageState = iota
 	StageRunning

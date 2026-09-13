@@ -9,8 +9,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Progressive loading: the header renders as soon as the repository answers
+  and every collection stage reports running, retrying, done or degraded,
+  so a GitHub "still computing statistics" retry no longer looks like a hang.
+- On-disk response cache with ETag revalidation (one-hour freshness, `r`
+  forces a refresh, `--no-cache` / `WORTHY_NO_CACHE=1` disables it). A repeat
+  score drops from seconds to a fraction of a second.
+- `--json` and `--plain` output; plain is automatic when stdout is not a
+  terminal. `--help` and `--version` flags.
+- Light-background palette selected from the terminal's reported background.
+- Scrolling body with mouse wheel, page keys and a scroll indicator; the
+  selected row stays on screen.
+- Keys: `g`/`G` first and last row, `o` open on GitHub, `y` copy a one-line
+  summary. Footer hints and the help overlay now come from one keymap.
+- Window title names the repository and grade; the terminal's native
+  progress indicator follows the fetch.
+- Header badge shows the live remaining API budget.
 - Dependabot patch and minor updates queue themselves for auto-merge once the
   required checks pass; majors still wait for a human.
+
+### Fixed
+
+- Gauges view overflowed the terminal by two columns at every width.
+- Footer wrapped on terminals narrower than 100 columns.
+- Gate details, drill-down text and error messages ran past the right edge
+  on narrow terminals.
+- Header badge wrapped onto a second line.
 
 ## [0.2.0] - 2026-07-09
 

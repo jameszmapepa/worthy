@@ -154,6 +154,24 @@ func TestRateInfo_TracksHeaders(t *testing.T) {
 	}
 }
 
+func TestRateInfo_IgnoresNonCoreResources(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-RateLimit-Remaining", "26")
+		w.Header().Set("X-RateLimit-Limit", "30")
+		w.Header().Set("X-RateLimit-Resource", "search")
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{}`))
+	}))
+	defer srv.Close()
+	c := newTestClient(srv)
+	if err := c.get(context.Background(), "/search/issues", nil); err != nil {
+		t.Fatal(err)
+	}
+	if c.RateInfo().Known {
+		t.Errorf("search budget must not be reported as the core budget: %+v", c.RateInfo())
+	}
+}
+
 func TestDefaultCacheDir_EndsWithWorthy(t *testing.T) {
 	dir, err := DefaultCacheDir()
 	if err != nil {

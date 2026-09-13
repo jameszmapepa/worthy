@@ -125,7 +125,8 @@ func (m Model) renderError() string {
 	if isRateLimit(m.err) {
 		b.WriteString("\n\n")
 		b.WriteString(mutedStyle.Render(
-			"Tip: set a GITHUB_TOKEN to lift the limit to 5,000 requests/hour."))
+			"Tip: set a GITHUB_TOKEN to lift the limit to 5,000 requests/hour.",
+		))
 	}
 
 	b.WriteString("\n\n")
