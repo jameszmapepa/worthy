@@ -87,21 +87,21 @@ func TestC3HeightStoredOnWindowResize(t *testing.T) {
 	}
 }
 
-func TestC3TruncationSentinelAppearsWhenOverflow(t *testing.T) {
+func TestC3ShortTerminalFitsHeight(t *testing.T) {
 	m := loadedModel(t)
-	m.height = 8
+	m.height = 12
 	out := m.render()
-	if !strings.Contains(out, "↓ content truncated") {
-		t.Errorf("tiny terminal: expected truncation sentinel:\n%s", out)
+	if got := strings.Count(out, "\n") + 1; got > 12 {
+		t.Errorf("render at height 12 produced %d lines:\n%s", got, out)
 	}
 }
 
-func TestC3NoTruncationWhenHeightZero(t *testing.T) {
+func TestC3FullContentWhenHeightZero(t *testing.T) {
 	m := loadedModel(t)
 	m.height = 0
 	out := m.render()
-	if strings.Contains(out, "↓ content truncated") {
-		t.Error("height=0 must not trigger truncation")
+	if !strings.Contains(out, "Gates") {
+		t.Error("height=0 must render the whole body")
 	}
 }
 
@@ -264,7 +264,7 @@ func TestC9FetchCmdBoundsTimeout(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	m := New(ctx, github.NewClient(), "o", "r")
-	msg := m.fetchCmd()()
+	msg := m.collectCmd()()
 	if _, ok := msg.(resultMsg); !ok {
 		t.Errorf("fetchCmd produced %T, want resultMsg", msg)
 	}

@@ -7,6 +7,7 @@ import (
 
 	"charm.land/lipgloss/v2"
 
+	"github.com/jameszmapepa/worthy/internal/github"
 	"github.com/jameszmapepa/worthy/internal/score"
 )
 
@@ -16,14 +17,9 @@ const (
 	glyphWatcher = "◉"
 )
 
-var headerPanelStyle = lipgloss.NewStyle().
-	Border(lipgloss.RoundedBorder()).
-	BorderForeground(colorBorder).
-	Padding(0, 1)
-
-func renderHeaderPanel(owner, repo string, raw score.RawMetrics, loaded, authenticated bool, width int, grade string, ascii bool) string {
+func renderHeaderPanel(owner, repo string, raw score.RawMetrics, loaded, authenticated bool, rate github.RateInfo, width int, grade string, ascii bool) string {
 	boxW := clampWidth(width-2, 24, 200)
-	textW := boxW - 2
+	textW := boxW - 4
 
 	identity := titleStyle.Render(owner + "/" + repo)
 
@@ -32,7 +28,7 @@ func renderHeaderPanel(owner, repo string, raw score.RawMetrics, loaded, authent
 			gradeStyle.Render("Grade "+grade)
 	}
 
-	badge := rateLimitBadge(authenticated)
+	badge := rateLimitBadge(authenticated, rate)
 	top := joinEnds(identity, badge, textW)
 
 	rows := []string{top}
@@ -41,6 +37,9 @@ func renderHeaderPanel(owner, repo string, raw score.RawMetrics, loaded, authent
 			rows = append(rows, mutedStyle.Render(truncate(desc, textW)))
 		}
 		rows = append(rows, metaRow(raw, ascii))
+		if len(raw.Languages) > 0 {
+			rows = append(rows, "", languageBar(raw.Languages, textW), languageLegend(raw.Languages, textW))
+		}
 	}
 
 	body := strings.Join(rows, "\n")
@@ -65,12 +64,24 @@ func metaRow(raw score.RawMetrics, ascii bool) string {
 	return strings.Join(parts, mutedStyle.Render("   "))
 }
 
-func rateLimitBadge(authenticated bool) string {
-	rate, rateColor := "60/hr", colorAmber
-	if authenticated {
-		rate, rateColor = "5,000/hr", colorGreen
+func rateLimitBadge(authenticated bool, rate github.RateInfo) string {
+	if rate.Known && rate.Limit > 0 {
+		frac := float64(rate.Remaining) / float64(rate.Limit)
+		c := colorGreen
+		switch {
+		case frac < 0.1:
+			c = colorRed
+		case frac < 0.34:
+			c = colorAmber
+		}
+		text := fmt.Sprintf("%s/%s", humanizeCount(rate.Remaining), humanizeCount(rate.Limit))
+		return mutedStyle.Render("API ") + lipgloss.NewStyle().Foreground(c).Render(text)
 	}
-	return mutedStyle.Render("API ") + lipgloss.NewStyle().Foreground(rateColor).Render(rate)
+	text, c := "60/hr", colorAmber
+	if authenticated {
+		text, c = "5,000/hr", colorGreen
+	}
+	return mutedStyle.Render("API ") + lipgloss.NewStyle().Foreground(c).Render(text)
 }
 
 func licenseLabel(spdx string) string {

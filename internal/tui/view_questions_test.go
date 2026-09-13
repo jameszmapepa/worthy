@@ -240,7 +240,7 @@ func TestAllSixteenIndicatorsSelectableWithRealScorer(t *testing.T) {
 	}
 
 	m := Model{}
-	updated, _ := m.Update(resultMsg{report: r, raw: fixedRaw()})
+	updated, _ := m.Update(resultMsg{gen: m.fetchGen, report: r, raw: fixedRaw()})
 	m = updated.(Model)
 	m = press(m, "2")
 	for range 25 {

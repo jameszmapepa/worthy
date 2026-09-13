@@ -291,6 +291,7 @@ func countBaseRoutes(now time.Time) map[string]fixture {
 		"/repos/acme/widget":                       {200, repoJSON},
 		"/repos/acme/widget/community/profile":     {200, communityJSON},
 		"/repos/acme/widget/stats/contributors":    {200, `[]`},
+		"/repos/acme/widget/languages":             {200, `{"Go":9000,"Shell":1000}`},
 		"/repos/acme/widget/stats/commit_activity": {200, `[]`},
 		"/repos/acme/widget/releases":              {200, `[]`},
 		"/repos/acme/widget/actions/workflows":     {200, `{"total_count":0,"workflows":[]}`},

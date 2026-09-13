@@ -34,6 +34,8 @@ func fixedReport() score.Report {
 	}
 
 	verdicts := score.QuestionVerdicts(score.Report{Categories: cats, Gates: gates})
+	verdicts[0].Message = "Mixed: pushed 10d ago, 6 default-branch commits a week, last release 4mo ago."
+	verdicts[1].Message = "Likely: 5 of 8 newcomer PRs merged, first reply in about 27h."
 	return score.Report{
 		Categories:        cats,
 		Composite:         68.2,

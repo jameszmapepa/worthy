@@ -49,8 +49,8 @@ func TestLanguageBadge(t *testing.T) {
 	if got := languageBadge("TypeScript", false); !strings.Contains(got, languageIcons["typescript"].glyph) {
 		t.Errorf("mapped language should render its glyph: %q", got)
 	}
-	if strings.Contains(languageBadge("Go", false), "Go") {
-		t.Errorf("mapped language should drop the name in favor of the glyph")
+	if !strings.Contains(languageBadge("Go", false), "Go") {
+		t.Errorf("badge should show the language name beside the glyph")
 	}
 
 	asciiTS := languageBadge("TypeScript", true)
@@ -99,7 +99,7 @@ func TestVerdictAppearsInScorecardHero(t *testing.T) {
 	r := realReport()
 	out := renderScorecard(r, 100, -1, false)
 
-	if r.Verdict == "" || !strings.Contains(out, "grade") {
+	if r.Verdict == "" || !strings.Contains(out, r.Verdict[:20]) {
 		t.Errorf("scorecard hero should contain the verdict:\n%s", out)
 	}
 }

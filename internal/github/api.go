@@ -129,6 +129,16 @@ func (c *Client) Workflows(ctx context.Context, owner, repo string) ([]Workflow,
 	return wl.Workflows, nil
 }
 
+// Languages fetches bytes of code per language.
+func (c *Client) Languages(ctx context.Context, owner, repo string) (map[string]int, error) {
+	var out map[string]int
+	path := fmt.Sprintf("/repos/%s/%s/languages", url.PathEscape(owner), url.PathEscape(repo))
+	if err := c.get(ctx, path, &out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // RecentPulls fetches up to one page of pull requests in the given state, sorted by last update descending.
 func (c *Client) RecentPulls(ctx context.Context, owner, repo, state string) ([]PullRequest, error) {
 	var ps []PullRequest

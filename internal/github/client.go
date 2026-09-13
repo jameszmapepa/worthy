@@ -10,6 +10,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -39,6 +40,19 @@ func (e *RateLimitError) Error() string {
 		e.Limit, e.Endpoint, wait, e.Reset.Format(time.Kitchen))
 }
 
+// ServerError is returned when GitHub answers 5xx after the retries are spent.
+type ServerError struct {
+	Status   int
+	Endpoint string
+}
+
+func (e *ServerError) Error() string {
+	return fmt.Sprintf("github %s returned %d %s; GitHub is having trouble, try again in a moment",
+		e.Endpoint, e.Status, http.StatusText(e.Status))
+}
+
+const serverErrorRetries = 2
+
 // NotFoundError is returned for a 404 response.
 type NotFoundError struct{ Endpoint string }
 
@@ -51,6 +65,38 @@ type Client struct {
 	token      string
 	maxRetries int
 	retryWait  time.Duration
+	cache      *diskCache
+
+	rateMu sync.Mutex
+	rate   RateInfo
+}
+
+// RateInfo is the primary rate-limit budget as of the last real response.
+type RateInfo struct {
+	Remaining int
+	Limit     int
+	Known     bool
+}
+
+// RateInfo returns the core budget GitHub reported on the most recent network response.
+func (c *Client) RateInfo() RateInfo {
+	c.rateMu.Lock()
+	defer c.rateMu.Unlock()
+	return c.rate
+}
+
+func (c *Client) recordRate(h http.Header) {
+	if res := h.Get("X-RateLimit-Resource"); res != "" && res != "core" {
+		return
+	}
+	rem, err1 := strconv.Atoi(h.Get("X-RateLimit-Remaining"))
+	lim, err2 := strconv.Atoi(h.Get("X-RateLimit-Limit"))
+	if err1 != nil || err2 != nil {
+		return
+	}
+	c.rateMu.Lock()
+	c.rate = RateInfo{Remaining: rem, Limit: lim, Known: true}
+	c.rateMu.Unlock()
 }
 
 // Option configures a Client.
@@ -123,6 +169,9 @@ func (c *Client) getWithHeader(ctx context.Context, path string, out any) (http.
 			if attempt >= c.maxRetries {
 				return nil, fmt.Errorf("github still computing stats for %s after %d retries", path, attempt)
 			}
+			if observe := retryObserverFrom(ctx); observe != nil {
+				observe(path, attempt+1)
+			}
 			if err := sleep(ctx, c.retryWait); err != nil {
 				return nil, err
 			}
@@ -134,6 +183,15 @@ func (c *Client) getWithHeader(ctx context.Context, path string, out any) (http.
 		case isRateLimited(status, header):
 			return nil, rateLimitError(header, path)
 
+		case status >= http.StatusInternalServerError:
+			if attempt >= serverErrorRetries {
+				return nil, &ServerError{Status: status, Endpoint: path}
+			}
+			if err := sleep(ctx, c.retryWait); err != nil {
+				return nil, err
+			}
+			continue
+
 		default:
 			return nil, fmt.Errorf("github %s returned %d: %s", path, status, snippet(body))
 		}
@@ -142,26 +200,60 @@ func (c *Client) getWithHeader(ctx context.Context, path string, out any) (http.
 
 // getRaw fetches raw file bytes; the default content endpoint returns base64-encoded JSON, requiring a different Accept header.
 func (c *Client) getRaw(ctx context.Context, path string) ([]byte, error) {
-	header, body, status, err := c.doGet(ctx, path, "application/vnd.github.raw+json")
-	if err != nil {
-		return nil, err
-	}
-	switch {
-	case status == http.StatusOK:
-		return body, nil
-	case status == http.StatusNotFound:
-		return nil, &NotFoundError{Endpoint: path}
-	case isRateLimited(status, header):
-		return nil, rateLimitError(header, path)
-	default:
-		return nil, fmt.Errorf("github %s returned %d: %s", path, status, snippet(body))
+	for attempt := 0; ; attempt++ {
+		header, body, status, err := c.doGet(ctx, path, "application/vnd.github.raw+json")
+		if err != nil {
+			return nil, err
+		}
+		switch {
+		case status == http.StatusOK:
+			return body, nil
+		case status == http.StatusNotFound:
+			return nil, &NotFoundError{Endpoint: path}
+		case isRateLimited(status, header):
+			return nil, rateLimitError(header, path)
+		case status >= http.StatusInternalServerError:
+			if attempt >= serverErrorRetries {
+				return nil, &ServerError{Status: status, Endpoint: path}
+			}
+			if err := sleep(ctx, c.retryWait); err != nil {
+				return nil, err
+			}
+			continue
+		default:
+			return nil, fmt.Errorf("github %s returned %d: %s", path, status, snippet(body))
+		}
 	}
 }
 
-// doGet executes a single GET. The Close error is intentionally discarded: the
-// read result is already captured, so a Close failure cannot change body or
-// readErr and is not actionable.
 func (c *Client) doGet(ctx context.Context, path, accept string) (http.Header, []byte, int, error) {
+	var entry *cacheEntry
+	if c.cache != nil {
+		if e, ok := c.cache.load(path, accept); ok {
+			if c.cache.fresh(e) && !forced(ctx) {
+				return cachedHeader(e), e.Body, http.StatusOK, nil
+			}
+			entry = e
+		}
+	}
+
+	header, body, status, err := c.roundTrip(ctx, path, accept, entry)
+	switch {
+	case err != nil:
+		return nil, nil, 0, err
+	case status == http.StatusNotModified && entry != nil:
+		entry.FetchedAt = time.Now()
+		c.cache.store(path, accept, entry)
+		return cachedHeader(entry), entry.Body, http.StatusOK, nil
+	case status == http.StatusOK && c.cache != nil && header.Get("ETag") != "":
+		c.cache.store(path, accept, &cacheEntry{
+			ETag: header.Get("ETag"), Link: header.Get("Link"), FetchedAt: time.Now(), Body: body,
+		})
+	}
+	return header, body, status, nil
+}
+
+func (c *Client) roundTrip(ctx context.Context, path, accept string, entry *cacheEntry) (http.Header, []byte, int, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+path, nil)
 	if err != nil {
 		return nil, nil, 0, fmt.Errorf("build request for %s: %w", path, err)
@@ -171,6 +263,9 @@ func (c *Client) doGet(ctx context.Context, path, accept string) (http.Header, [
 	req.Header.Set("User-Agent", userAgent)
 	if c.token != "" {
 		req.Header.Set("Authorization", "Bearer "+c.token)
+	}
+	if entry != nil {
+		req.Header.Set("If-None-Match", entry.ETag)
 	}
 
 	resp, err := c.httpClient.Do(req)
@@ -182,6 +277,7 @@ func (c *Client) doGet(ctx context.Context, path, accept string) (http.Header, [
 	if readErr != nil {
 		return nil, nil, 0, fmt.Errorf("read body for %s: %w", path, readErr)
 	}
+	c.recordRate(resp.Header)
 	return resp.Header, body, resp.StatusCode, nil
 }
 
@@ -205,6 +301,9 @@ func rateLimitError(h http.Header, path string) *RateLimitError {
 
 func snippet(b []byte) string {
 	s := strings.TrimSpace(string(b))
+	if strings.HasPrefix(s, "<") {
+		return "(html error page)"
+	}
 	if len(s) > 200 {
 		return s[:200] + "..."
 	}

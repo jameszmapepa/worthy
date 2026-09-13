@@ -5,7 +5,9 @@ import (
 	"context"
 	"time"
 
+	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/spinner"
+	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/jameszmapepa/worthy/internal/github"
@@ -26,10 +28,18 @@ const viewCount = 4
 const fetchTimeout = 60 * time.Second
 
 type resultMsg struct {
+	gen    int
 	report score.Report
 	raw    score.RawMetrics
 	err    error
 }
+
+type progressMsg struct {
+	gen int
+	p   metrics.Progress
+}
+
+const progressBuffer = 64
 
 // Model is the Bubble Tea model for the worthy TUI.
 type Model struct {
@@ -50,6 +60,20 @@ type Model struct {
 	height      int
 	loadStart   time.Time
 	spinner     spinner.Model
+
+	viewport viewport.Model
+	keys     keyMap
+	opener   func(url string) error
+
+	status    string
+	statusGen int
+
+	fetchGen    int
+	fetchCancel context.CancelFunc
+	progress    chan tea.Msg
+	stages      []stageStatus
+	hasRepo     bool
+	revalidate  bool
 
 	report score.Report
 	raw    score.RawMetrics
@@ -81,6 +105,9 @@ func New(ctx context.Context, client *github.Client, owner, repo string, opts ..
 		now:       time.Now(),
 		state:     stateLoading,
 		spinner:   spinner.New(),
+		viewport:  viewport.New(),
+		keys:      defaultKeyMap(),
+		opener:    openInBrowser,
 		width:     80,
 		height:    0,
 		loadStart: time.Now(),
@@ -88,25 +115,71 @@ func New(ctx context.Context, client *github.Client, owner, repo string, opts ..
 	for _, o := range opts {
 		o(&m)
 	}
+	m.prepareFetch()
 	return m
 }
 
-// Init starts the spinner and kicks off the first fetch.
+// Init starts the spinner, the background-colour request and the first fetch.
 func (m Model) Init() tea.Cmd {
-	return tea.Batch(m.spinner.Tick, m.fetchCmd())
+	return tea.Batch(m.spinner.Tick, tea.RequestBackgroundColor, m.fetchCmd())
+}
+
+func (m *Model) prepareFetch() {
+	if m.fetchCancel != nil {
+		m.fetchCancel()
+	}
+	m.fetchGen++
+	m.state = stateLoading
+	m.err = nil
+	m.hasRepo = false
+	m.loadStart = time.Now()
+	m.stages = newStages()
+	m.progress = make(chan tea.Msg, progressBuffer)
+	_, m.fetchCancel = context.WithCancel(m.ctx)
+	m.revalidate = m.fetchGen > 1
 }
 
 func (m Model) fetchCmd() tea.Cmd {
+	return tea.Batch(m.collectCmd(), waitProgress(m.progress))
+}
+
+func (m Model) collectCmd() tea.Cmd {
 	ctx, cancel := context.WithTimeout(m.ctx, fetchTimeout)
+	if m.revalidate {
+		ctx = github.ForceRevalidate(ctx)
+	}
 	client := m.client
 	owner, repo, now := m.owner, m.repo, m.now
+	gen, ch := m.fetchGen, m.progress
+	parentCancel := m.fetchCancel
 	return func() tea.Msg {
 		defer cancel()
-		raw, err := metrics.Collect(ctx, client, owner, repo, now)
-		if err != nil {
-			return resultMsg{err: err}
+		go func() {
+			<-ctx.Done()
+			parentCancel()
+		}()
+		emit := func(p metrics.Progress) {
+			select {
+			case ch <- progressMsg{gen: gen, p: p}:
+			case <-ctx.Done():
+			}
 		}
-		return resultMsg{report: score.Evaluate(raw), raw: raw}
+		raw, err := metrics.Collect(ctx, client, owner, repo, now, metrics.WithProgress(emit))
+		close(ch)
+		if err != nil {
+			return resultMsg{gen: gen, err: err}
+		}
+		return resultMsg{gen: gen, report: score.Evaluate(raw), raw: raw}
+	}
+}
+
+func waitProgress(ch <-chan tea.Msg) tea.Cmd {
+	return func() tea.Msg {
+		msg, ok := <-ch
+		if !ok {
+			return nil
+		}
+		return msg
 	}
 }
 
@@ -114,12 +187,32 @@ func (m Model) fetchCmd() tea.Cmd {
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
-
 		m.width = msg.Width
 		m.height = msg.Height
+		m.syncViewport(true)
 		return m, nil
 
+	case tea.MouseWheelMsg:
+		m.syncViewport(false)
+		var cmd tea.Cmd
+		m.viewport, cmd = m.viewport.Update(msg)
+		return m, cmd
+
+	case tea.BackgroundColorMsg:
+		setTheme(msg.IsDark())
+		return m, nil
+
+	case progressMsg:
+		if msg.gen != m.fetchGen {
+			return m, nil
+		}
+		m.applyProgress(msg.p)
+		return m, waitProgress(m.progress)
+
 	case resultMsg:
+		if msg.gen != m.fetchGen {
+			return m, nil
+		}
 		if msg.err != nil {
 			m.state = stateErrored
 			m.err = msg.err
@@ -133,6 +226,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyPressMsg:
 		return m.handleKey(msg)
 
+	case statusMsg:
+		return m, m.setStatus(msg.text)
+
+	case statusExpiredMsg:
+		if msg.gen == m.statusGen {
+			m.status = ""
+		}
+		return m, nil
+
 	case spinner.TickMsg:
 		var cmd tea.Cmd
 		m.spinner, cmd = m.spinner.Update(msg)
@@ -142,13 +244,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
-	switch msg.String() {
-	case "q", "ctrl+c":
-
+	k := m.keymap()
+	switch {
+	case key.Matches(msg, k.Quit):
 		m.cancel()
 		return m, tea.Quit
-	case "esc":
-
+	case key.Matches(msg, k.Back):
 		if m.helpVisible {
 			m.helpVisible = false
 			return m, nil
@@ -159,57 +260,82 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		}
 		m.cancel()
 		return m, tea.Quit
-	case "?":
-
+	case key.Matches(msg, k.Help):
 		m.helpVisible = !m.helpVisible
 		return m, nil
-	case "tab", "right", "l":
-
+	case key.Matches(msg, k.Next):
 		m.view = (m.view + 1) % viewCount
 		m.resetSelection()
 		return m, nil
-	case "shift+tab", "left", "h":
+	case key.Matches(msg, k.Prev):
 		m.view = (m.view - 1 + viewCount) % viewCount
 		m.resetSelection()
 		return m, nil
-	case "1":
-		m.view = 0
+	case key.Matches(msg, k.Jump):
+		m.view = int(msg.String()[0] - '1')
 		m.resetSelection()
 		return m, nil
-	case "2":
-		m.view = 1
-		m.resetSelection()
-		return m, nil
-	case "3":
-		m.view = 2
-		m.resetSelection()
-		return m, nil
-	case "4":
-		m.view = 3
-		m.resetSelection()
-		return m, nil
-	case "r":
-		m.state = stateLoading
-		m.err = nil
-		m.loadStart = time.Now()
+	case key.Matches(msg, k.Refresh):
+		m.prepareFetch()
 		return m, tea.Batch(m.spinner.Tick, m.fetchCmd())
-	case "j", "down":
+	case key.Matches(msg, k.Down):
 		if m.canSelect() {
 			m.moveSelection(1)
+		} else {
+			m.scroll(func() { m.viewport.ScrollDown(1) })
 		}
 		return m, nil
-	case "k", "up":
+	case key.Matches(msg, k.Up):
 		if m.canSelect() {
 			m.moveSelection(-1)
+		} else {
+			m.scroll(func() { m.viewport.ScrollUp(1) })
 		}
 		return m, nil
-	case "enter":
+	case key.Matches(msg, k.Top):
+		if m.canSelect() {
+			m.moveSelection(-m.selected)
+		} else {
+			m.scroll(func() { m.viewport.GotoTop() })
+		}
+		return m, nil
+	case key.Matches(msg, k.Bottom):
+		if m.canSelect() {
+			m.moveSelection(m.currentSelectableCount())
+		} else {
+			m.scroll(func() { m.viewport.GotoBottom() })
+		}
+		return m, nil
+	case key.Matches(msg, k.PageDown):
+		m.scroll(m.viewport.HalfPageDown)
+		return m, nil
+	case key.Matches(msg, k.PageUp):
+		m.scroll(m.viewport.HalfPageUp)
+		return m, nil
+	case key.Matches(msg, k.Enter):
 		if m.canSelect() {
 			m.expanded = true
+			m.syncViewport(true)
 		}
 		return m, nil
+	case key.Matches(msg, k.Open):
+		return m, m.openCmd()
+	case key.Matches(msg, k.Copy):
+		return m, tea.Batch(m.copyCmd(), m.setStatus("Copied summary to clipboard"))
 	}
 	return m, nil
+}
+
+func (m Model) keymap() keyMap {
+	if len(m.keys.Quit.Keys()) == 0 {
+		return defaultKeyMap()
+	}
+	return m.keys
+}
+
+func (m *Model) scroll(move func()) {
+	m.syncViewport(false)
+	move()
 }
 
 func (m Model) canSelect() bool {
@@ -247,16 +373,45 @@ func (m *Model) moveSelection(delta int) {
 	if m.selected >= n {
 		m.selected = n - 1
 	}
+	m.syncViewport(true)
 }
 
 func (m *Model) resetSelection() {
 	m.selected = 0
 	m.expanded = false
+	m.viewport.GotoTop()
+	m.syncViewport(true)
 }
 
 // View renders the current state.
 func (m Model) View() tea.View {
-	return tea.NewView(m.render())
+	v := tea.NewView(m.render())
+	v.MouseMode = tea.MouseModeCellMotion
+	v.WindowTitle = m.windowTitle()
+	v.ProgressBar = m.progressBar()
+	return v
+}
+
+func (m Model) windowTitle() string {
+	title := "worthy · " + m.owner + "/" + m.repo
+	if m.state == stateLoaded && m.report.Grade != "" {
+		title += " · Grade " + m.report.Grade
+	}
+	return title
+}
+
+func (m Model) progressBar() *tea.ProgressBar {
+	switch m.state {
+	case stateLoading:
+		if len(m.stages) == 0 {
+			return tea.NewProgressBar(tea.ProgressBarIndeterminate, 0)
+		}
+		return tea.NewProgressBar(tea.ProgressBarDefault, m.stagesFinished()*100/len(m.stages))
+	case stateErrored:
+		return tea.NewProgressBar(tea.ProgressBarError, 100)
+	default:
+		return nil
+	}
 }
 
 // Run constructs and runs the TUI program to completion, blocking until quit.

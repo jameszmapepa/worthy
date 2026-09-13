@@ -14,6 +14,9 @@ func commitFrequency(raw RawMetrics) SubScore {
 	case len(raw.CommitsLast52Weeks) > 0:
 		perWeek = medianLast(raw.CommitsLast52Weeks, 12)
 		rawDesc = fmt.Sprintf("%.1f commits/wk (median, 12wk)", perWeek)
+		if perWeek == 0 {
+			rawDesc = "no commits most weeks (12wk median)"
+		}
 	case raw.HasCommitFallback:
 		perWeek = raw.CommitsPerWeekFallback
 		rawDesc = fmt.Sprintf("~%.1f commits/wk (12wk avg)", perWeek)
@@ -67,16 +70,22 @@ func releaseCadence(raw RawMetrics) SubScore {
 
 func issueCloseRatio(raw RawMetrics) SubScore {
 	total := raw.RecentIssuesClosed + raw.RecentIssuesOpen
+	reading := fmt.Sprintf("%d/%d issues closed (90d)", raw.RecentIssuesClosed, total)
+	if total == 0 {
+		reading = "no issues in 90d"
+	}
 	return ratioScore(raw.RecentIssuesClosed, total, "issue_close_ratio", "Issue close ratio",
-		"closed / (closed+open), 90d cohort",
-		fmt.Sprintf("%d/%d issues closed (90d)", raw.RecentIssuesClosed, total))
+		"closed / (closed+open), 90d cohort", reading)
 }
 
 func prBacklog(raw RawMetrics) SubScore {
 	total := raw.RecentPRsMerged + raw.RecentPRsOpen
+	reading := fmt.Sprintf("%d merged / %d open (90d)", raw.RecentPRsMerged, raw.RecentPRsOpen)
+	if total == 0 {
+		reading = "no PRs in 90d"
+	}
 	return ratioScore(raw.RecentPRsMerged, total, "pr_backlog", "PR backlog",
-		"merged / (merged+open), 90d cohort",
-		fmt.Sprintf("%d merged / %d open (90d)", raw.RecentPRsMerged, raw.RecentPRsOpen))
+		"merged / (merged+open), 90d cohort", reading)
 }
 
 func issueResponsiveness(raw RawMetrics) SubScore {
@@ -111,16 +120,22 @@ func issueResponsiveness(raw RawMetrics) SubScore {
 
 func prAcceptance(raw RawMetrics) SubScore {
 	total := raw.MergedPRs + raw.ClosedUnmergedPRs
+	reading := fmt.Sprintf("%d merged / %d rejected", raw.MergedPRs, raw.ClosedUnmergedPRs)
+	if total == 0 {
+		reading = "no PRs closed yet"
+	}
 	return ratioScore(raw.MergedPRs, total, "pr_acceptance", "PR acceptance",
-		"merged / (merged+rejected) × 100",
-		fmt.Sprintf("%d merged / %d rejected", raw.MergedPRs, raw.ClosedUnmergedPRs))
+		"merged / (merged+rejected) × 100", reading)
 }
 
 func newcomerMergeRate(raw RawMetrics) SubScore {
 	total := raw.NewcomerPRsMerged + raw.NewcomerPRsClosedUnmerged
+	reading := fmt.Sprintf("%d/%d newcomer PRs merged", raw.NewcomerPRsMerged, total)
+	if total == 0 {
+		reading = "no newcomer PRs closed yet"
+	}
 	return ratioScore(raw.NewcomerPRsMerged, total, "newcomer_merge_rate", "Newcomer merge rate",
-		"merged / (merged+rejected) × 100",
-		fmt.Sprintf("%d/%d newcomer PRs merged", raw.NewcomerPRsMerged, total))
+		"merged / (merged+rejected) × 100", reading)
 }
 
 func governanceDocs(raw RawMetrics) SubScore {
@@ -232,8 +247,7 @@ func prResponsiveness(raw RawMetrics) SubScore {
 		Label:   "PR responsiveness",
 		Value:   value,
 		Formula: formula,
-		Raw: fmt.Sprintf("median %.0fd open, %d stale newcomer PRs",
-			raw.MedianOpenPRAgeDays, raw.StaleNewcomerOpenPRs),
+		Raw:     prQueueReading(raw),
 	}
 }
 
@@ -305,4 +319,11 @@ func medianLast(s []int, n int) float64 {
 		return float64(vals[mid])
 	}
 	return float64(vals[mid-1]+vals[mid]) / 2
+}
+
+func prQueueReading(raw RawMetrics) string {
+	if raw.StaleNewcomerOpenPRs == 0 {
+		return fmt.Sprintf("PRs sit %.0fd; none stale", raw.MedianOpenPRAgeDays)
+	}
+	return fmt.Sprintf("PRs sit %.0fd; %s", raw.MedianOpenPRAgeDays, plural(raw.StaleNewcomerOpenPRs, "newcomer PR stale", "newcomer PRs stale"))
 }

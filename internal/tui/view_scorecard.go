@@ -13,27 +13,6 @@ const scorecardLabelWidth = 22
 
 const scorecardBarWidthOverhead = 44
 
-var panelStyle = lipgloss.NewStyle().
-	Border(lipgloss.RoundedBorder()).
-	BorderForeground(colorBorder).
-	Padding(0, 1)
-
-var heroStyle = lipgloss.NewStyle().
-	Border(lipgloss.ThickBorder()).
-	BorderForeground(colorAccent).
-	Padding(0, 2)
-
-var (
-	selectedMarkerStyle = lipgloss.NewStyle().Foreground(colorAccent).Bold(true)
-	selectedLabelStyle  = lipgloss.NewStyle().Foreground(colorAccent).Bold(true)
-)
-
-var detailStyle = lipgloss.NewStyle().
-	MarginLeft(2).
-	Border(lipgloss.NormalBorder(), false, false, false, true).
-	BorderForeground(colorAccent).
-	PaddingLeft(1)
-
 func renderScorecard(r score.Report, width, selected int, expanded bool) string {
 	var b strings.Builder
 
@@ -52,7 +31,7 @@ func renderScorecard(r score.Report, width, selected int, expanded bool) string 
 	}
 
 	b.WriteString("\n")
-	b.WriteString(renderGates(r.Gates))
+	b.WriteString(renderGates(r.Gates, width))
 	return b.String()
 }
 
@@ -91,7 +70,7 @@ func renderQuestionCard(qs score.QuestionScore, width int) string {
 
 	body := question + "\n" + headline
 	if qs.Message != "" {
-		body += "\n" + mutedStyle.Render(truncate(qs.Message, innerW))
+		body += "\n" + mutedStyle.Width(innerW).Render(qs.Message)
 	}
 
 	return questionCardStyle.Width(width - 2).Render(body)
@@ -116,16 +95,29 @@ func renderHero(r score.Report, width int) string {
 
 	body := headline
 	if r.Verdict != "" {
-		body += "\n" + labelStyle.Render(truncate(r.Verdict, clampWidth(width-8, 30, 120)))
+		body += "\n" + labelStyle.Width(clampWidth(width-8, 30, 120)).Render(r.Verdict)
 	}
 	return heroStyle.Render(body)
 }
 
+func panelTextWidth(boxW int) int { return boxW - 4 }
+
+const subLineOverhead = 2 + scorecardLabelWidth + 1 + 1 + 5 + 2 + 2
+
+func rawBudgetFor(textW, barWidth int) int {
+	n := textW - subLineOverhead - barWidth
+	if n < minRawBudget {
+		return 0
+	}
+	return n
+}
+
+const minRawBudget = 6
+
 func renderCategoryPanel(cat score.CategoryScore, barWidth, width, base, selected int, expanded bool) string {
 	boxW := clampWidth(width-2, 30, 200)
-	textW := boxW - 2
-
-	rawBudget := max(textW-(scorecardLabelWidth+1+barWidth+1+5+1+2)-1, 6)
+	textW := panelTextWidth(boxW)
+	rawBudget := rawBudgetFor(textW, barWidth)
 
 	var b strings.Builder
 	dot := lipgloss.NewStyle().Foreground(categoryColor(cat.Key)).Render("●")
@@ -137,7 +129,7 @@ func renderCategoryPanel(cat score.CategoryScore, barWidth, width, base, selecte
 		b.WriteString(renderSubLine(s, barWidth, rawBudget, sel))
 		if sel && expanded {
 			b.WriteString("\n")
-			b.WriteString(renderDetail(s, cat))
+			b.WriteString(renderDetail(s, cat, textW))
 		}
 		if i < len(cat.Subs)-1 {
 			b.WriteString("\n")
@@ -153,19 +145,24 @@ func renderSubLine(s score.SubScore, barWidth, rawBudget int, sel bool) string {
 	marker := "  "
 	label := labelStyle.Width(subLabelWidth).Render(text)
 	if sel {
-		marker = selectedMarkerStyle.Render("▸ ")
+		marker = selectedMarkerStyle.Render(selectionMarker + " ")
 		label = selectedLabelStyle.Width(subLabelWidth).Render(text)
 	}
 	bar := renderBar(s.Value, barWidth)
 	value := lipgloss.NewStyle().Foreground(barColor(s.Value)).
 		Render(fmt.Sprintf("%5.1f", s.Value))
 
-	grade := mutedStyle.Render(score.LetterGrade(s.Value))
-	raw := mutedStyle.Render(truncate(s.Raw, rawBudget))
-	return fmt.Sprintf("%s%s %s %s%s  %s", marker, label, bar, value, grade, raw)
+	grade := mutedStyle.Width(2).Render(score.LetterGrade(s.Value))
+	line := fmt.Sprintf("%s%s %s %s%s", marker, label, bar, value, grade)
+	if rawBudget > 0 {
+		line += "  " + mutedStyle.Render(truncate(s.Raw, rawBudget))
+	}
+	return line
 }
 
-func renderDetail(s score.SubScore, cat score.CategoryScore) string {
+const detailIndent = 4
+
+func renderDetail(s score.SubScore, cat score.CategoryScore, width int) string {
 	share := s.Weight * s.Value
 	pct := 0.0
 	if cat.Value > 0 {
@@ -186,10 +183,10 @@ func renderDetail(s score.SubScore, cat score.CategoryScore) string {
 		field("Share", fmt.Sprintf("%.1f of %.1f category (%.0f%%)", share, cat.Value, pct)),
 		field("Gates", gates),
 	}
-	return detailStyle.Render(strings.Join(lines, "\n"))
+	return detailStyle.Width(max(width-detailIndent, 20)).Render(strings.Join(lines, "\n"))
 }
 
-func renderGates(gates []score.Gate) string {
+func renderGates(gates []score.Gate, width int) string {
 	if len(gates) == 0 {
 		return mutedStyle.Render("No gates triggered.")
 	}
@@ -197,12 +194,20 @@ func renderGates(gates []score.Gate) string {
 	b.WriteString(titleStyle.Render("Gates"))
 	b.WriteString("\n")
 	for _, g := range gates {
-		b.WriteString(renderGateBadge(g))
-		b.WriteString("  ")
-		b.WriteString(mutedStyle.Render(g.Detail))
+		b.WriteString(renderGateLine(g, width))
 		b.WriteString("\n")
 	}
 	return b.String()
+}
+
+func renderGateLine(g score.Gate, width int) string {
+	badge := renderGateBadge(g)
+	detailW := width - lipgloss.Width(badge) - 2
+	if detailW < 16 {
+		return badge + "\n" + mutedStyle.Width(max(width, 16)).Render(g.Detail)
+	}
+	detail := mutedStyle.Width(detailW).Render(g.Detail)
+	return lipgloss.JoinHorizontal(lipgloss.Top, badge, "  ", detail)
 }
 
 func renderGateBadge(g score.Gate) string {
@@ -212,7 +217,7 @@ func renderGateBadge(g score.Gate) string {
 		text += fmt.Sprintf(" · caps %.0f", *g.CapTo)
 	}
 	return lipgloss.NewStyle().
-		Foreground(colorBackground).
+		Foreground(colorBadgeInk).
 		Background(c).
 		Bold(true).
 		Padding(0, 1).

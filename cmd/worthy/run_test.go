@@ -1,6 +1,16 @@
 package main
 
-import "testing"
+import (
+	"bytes"
+	"strings"
+	"testing"
+)
+
+func runQuiet(args []string) (string, error) {
+	var out, errb bytes.Buffer
+	err := run(args, &out, &errb, true)
+	return out.String(), err
+}
 
 func TestRunArgValidation(t *testing.T) {
 	tests := []struct {
@@ -13,33 +23,61 @@ func TestRunArgValidation(t *testing.T) {
 		{"non-github host", []string{"https://gitlab.com/a/b"}},
 		{"flag only, no repo", []string{"--ascii"}},
 		{"two positionals with a flag still errors", []string{"--ascii", "a/b", "c/d"}},
+		{"unknown flag", []string{"--bogus", "a/b"}},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			if err := run(tc.args); err == nil {
+			if _, err := runQuiet(tc.args); err == nil {
 				t.Errorf("run(%v) = nil, want error", tc.args)
 			}
 		})
 	}
 }
 
-func TestAsciiFlagParsing(t *testing.T) {
-	for _, args := range [][]string{
-		{"--ascii", "owner/repo"},
-		{"owner/repo", "-a"},
-		{"--no-ascii", "owner/repo"},
-	} {
-		positional := make([]string, 0, len(args))
-		for _, a := range args {
-			switch a {
-			case "--ascii", "-a", "--no-ascii":
-			default:
-				positional = append(positional, a)
-			}
+func TestParseArgsFlags(t *testing.T) {
+	o, err := parseArgs([]string{"--json", "--no-cache", "-a", "owner/repo"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !o.json || !o.noCache || !o.ascii || o.target != "owner/repo" {
+		t.Errorf("parsed = %+v", o)
+	}
+	o, err = parseArgs([]string{"owner/repo", "--plain", "--no-ascii"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !o.plain || o.ascii || o.json {
+		t.Errorf("parsed = %+v", o)
+	}
+}
+
+func TestSelectMode(t *testing.T) {
+	cases := []struct {
+		o    options
+		tty  bool
+		want mode
+	}{
+		{options{}, true, modeTUI},
+		{options{}, false, modePlain},
+		{options{plain: true}, true, modePlain},
+		{options{json: true}, false, modeJSON},
+		{options{json: true, plain: true}, true, modeJSON},
+	}
+	for _, c := range cases {
+		if got := selectMode(c.o, c.tty); got != c.want {
+			t.Errorf("selectMode(%+v, tty=%v) = %v, want %v", c.o, c.tty, got, c.want)
 		}
-		if len(positional) != 1 || positional[0] != "owner/repo" {
-			t.Errorf("args %v: positional = %v; want exactly [owner/repo]", args, positional)
-		}
+	}
+}
+
+func TestHelpAndVersionExitCleanly(t *testing.T) {
+	out, err := runQuiet([]string{"--help"})
+	if err != nil || !strings.Contains(out, "usage: worthy") {
+		t.Errorf("--help: err=%v out=%q", err, out)
+	}
+	out, err = runQuiet([]string{"--version"})
+	if err != nil || !strings.HasPrefix(out, "worthy ") {
+		t.Errorf("--version: err=%v out=%q", err, out)
 	}
 }
 
@@ -55,5 +93,21 @@ func TestAsciiFromEnv(t *testing.T) {
 		if asciiFromEnv() {
 			t.Errorf("WORTHY_ASCII=%q should NOT enable ascii mode", v)
 		}
+	}
+}
+
+func TestClientOptionsHonourNoCache(t *testing.T) {
+	if got := clientOptions(true); got != nil {
+		t.Errorf("--no-cache should yield no client options, got %d", len(got))
+	}
+	if got := clientOptions(false); len(got) != 1 {
+		t.Errorf("default should enable the cache, got %d options", len(got))
+	}
+}
+
+func TestNoCacheFlagIsAccepted(t *testing.T) {
+	_, err := runQuiet([]string{"--no-cache"})
+	if err == nil || !strings.Contains(err.Error(), "usage") {
+		t.Errorf("--no-cache alone should fail with usage, got %v", err)
 	}
 }

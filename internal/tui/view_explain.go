@@ -16,7 +16,7 @@ func renderExplain(r score.Report, width int) string {
 	if verdict == "" {
 		verdict = fmt.Sprintf("Grade %s", r.Grade)
 	}
-	b.WriteString(heroStyle.Render(truncate(verdict, clampWidth(width-8, 30, 120))))
+	b.WriteString(heroStyle.Render(labelStyle.Width(clampWidth(width-8, 30, 120)).Render(verdict)))
 	b.WriteString("\n\n")
 
 	strong, weak := score.Drivers(r)
@@ -31,7 +31,7 @@ func renderExplain(r score.Report, width int) string {
 
 	b.WriteString(titleStyle.Render("Gates"))
 	b.WriteString("\n")
-	b.WriteString(renderGateGuidance(r.Gates))
+	b.WriteString(renderGateGuidance(r.Gates, width))
 
 	return b.String()
 }
@@ -53,18 +53,16 @@ func renderDriverList(subs []score.SubScore, arrow string) string {
 	return b.String()
 }
 
-func renderGateGuidance(gates []score.Gate) string {
+func renderGateGuidance(gates []score.Gate, width int) string {
 	if len(gates) == 0 {
 		return lipgloss.NewStyle().Foreground(colorGreen).Render("✓ No gates triggered.")
 	}
 	var b strings.Builder
 	for i, g := range gates {
-		b.WriteString(renderGateBadge(g))
-		b.WriteString("  ")
-		b.WriteString(mutedStyle.Render(g.Detail))
+		b.WriteString(renderGateLine(g, width))
 		if g.HowToClear != "" {
-			b.WriteString("\n    ")
-			b.WriteString(labelStyle.Render("→ " + g.HowToClear))
+			b.WriteString("\n")
+			b.WriteString(labelStyle.MarginLeft(4).Width(max(width-4, 20)).Render("→ " + g.HowToClear))
 		}
 		if i < len(gates)-1 {
 			b.WriteString("\n")

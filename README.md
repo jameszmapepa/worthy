@@ -47,10 +47,37 @@ worthy owner/repo
 worthy github.com/owner/repo
 worthy https://github.com/owner/repo
 worthy --ascii owner/repo    # plain language tags instead of Nerd Font icons
+worthy --json owner/repo     # machine-readable score for scripts and CI
+worthy --plain owner/repo    # static scorecard, no interactive UI
+worthy owner/repo | less     # piped output is plain automatically
 ```
 
-The header shows the primary language as a Nerd Font devicon; pass `--ascii`
-(or set `WORTHY_ASCII=1`) if your terminal lacks a Nerd Font.
+The header shows the primary language as a filled badge with its Nerd Font
+devicon, plus a language bar and legend once the score loads; pass `--ascii`
+(or set `WORTHY_ASCII=1`) if your terminal lacks a Nerd Font. The palette
+follows your terminal background, so it reads on light and dark themes.
+
+While a score loads, the header appears as soon as the repository answers
+and each collection stage reports its state underneath; when GitHub is still
+computing statistics you see the retry count instead of a silent spinner.
+
+### Scripting
+
+`--json` prints one document with the grade, the two headline questions,
+every category and indicator (score, grade, raw reading, formula, weight),
+the gates that fired, and the repository metadata. `--plain` prints the
+scorecard and explanation as a static page and is the default whenever
+stdout is not a terminal, so `worthy owner/repo > score.txt` just works.
+Colour is stripped for pipes and under `NO_COLOR`.
+
+### Cache
+
+Responses are cached under your user cache directory (`~/.cache/worthy` on
+Linux, `~/Library/Caches/worthy` on macOS) for an hour, then revalidated
+with the stored ETag. A repeat score takes a fraction of a second, and when a
+token is set the revalidation costs nothing against the rate limit.
+Press `r` to force a fresh fetch; `--no-cache` (or `WORTHY_NO_CACHE=1`)
+turns the cache off.
 
 ### Views and keys
 
@@ -61,8 +88,12 @@ into any indicator, `?` lists every key.
 |---|---|
 | `←` `→` · `tab` / `shift+tab` | switch view |
 | `1` `2` `3` `4` | scorecard · questions · gauges · explain |
-| `↑` `↓` · `j` `k` | move selection |
+| `↑` `↓` · `j` `k` | move selection (scroll on views with nothing to select) |
+| `g` / `G` | first / last row |
 | `enter` / `esc` | open / close drill-down |
+| `pgdn` `pgup` · `ctrl+d` `ctrl+u` · mouse wheel | scroll |
+| `o` | open the repository in your browser |
+| `y` | copy a one-line summary to the clipboard |
 | `r` | re-fetch and re-score |
 | `?` · `q` | help · quit |
 
@@ -82,6 +113,14 @@ worthy answers two questions, then blends them into one overall grade:
   merge rate, how fast issues get a first reply, PR acceptance, docs, and license.
 - **Will it last?** — its momentum: commit frequency and recency, release
   cadence, issue close-ratio, and PR backlog.
+
+Each question comes with a one-sentence answer built from the actual
+readings, for example "Likely: 4 of 5 newcomer PRs merged, first reply in
+about 27h, contributing guide present." The headline verdict turns the two
+grades into a recommendation ("Worth your time", "Coin flip", "Look
+elsewhere unless you have a specific reason") followed by the evidence.
+Gates explain what the finding means for your pull request, with the
+numbers that triggered them.
 
 A **confidence** level flags repos with too little history to judge fairly.
 
@@ -117,9 +156,7 @@ GITHUB_TOKEN=$(gh auth token) worthy owner/repo
 
 ## Roadmap
 
-- `--json` / `--plain` non-interactive output for scripting and CI.
 - Pagination beyond one page for very large repos.
-- Response caching to stretch the unauthenticated rate limit.
 
 See [`CHANGELOG.md`](CHANGELOG.md) for released changes.
 

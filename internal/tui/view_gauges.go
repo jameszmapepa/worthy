@@ -15,13 +15,23 @@ const narrowTerminalWidth = 70
 
 const gaugeDetailBarWidthOverhead = 28
 
+const gaugePanelOverhead = 4 + 2 + gaugeLabelWidth + 1 + 1 + 5 + 2
+
+const trendPanelOverhead = 4
+
+const gaugeDetailOverhead = detailIndent + 22 + 1 + 1 + 5 + 2 + 2
+
 func renderGauges(r score.Report, raw score.RawMetrics, width, selected int, expanded bool) string {
 	grade := lipgloss.NewStyle().Foreground(barColor(r.AdjustedComposite)).Bold(true).
 		Render(fmt.Sprintf("  %s  ", r.Grade))
 	head := titleStyle.Render("Overall grade ") + grade +
 		mutedStyle.Render(fmt.Sprintf("  %.1f / 100", r.AdjustedComposite))
 
-	gaugeWidth := clampWidth(width/2-gaugeLabelWidth-10, 12, 40)
+	panelBudget := width
+	if width >= narrowTerminalWidth {
+		panelBudget = (width - 2) / 2
+	}
+	gaugeWidth := clampWidth(panelBudget-gaugePanelOverhead, 6, 40)
 	var gb strings.Builder
 	for ci, cat := range r.Categories {
 		gb.WriteString(renderGauge(cat.Label, cat.Value, gaugeWidth, ci == selected))
@@ -30,7 +40,7 @@ func renderGauges(r score.Report, raw score.RawMetrics, width, selected int, exp
 	gb.WriteString(renderGauge("Composite", r.AdjustedComposite, gaugeWidth, false))
 	gaugePanel := titledPanel("Category gauges", strings.TrimRight(gb.String(), "\n"), colorBorder)
 
-	sparkWidth := clampWidth(width/2-8, 16, 60)
+	sparkWidth := clampWidth(panelBudget-trendPanelOverhead, 16, 60)
 	trend := titleStyle.Render("52-week commit trend") + "\n" +
 		renderSparkline(raw.CommitsLast52Weeks, sparkWidth) + "\n\n" +
 		headlineStats(raw)
@@ -72,18 +82,21 @@ func headlineStats(raw score.RawMetrics) string {
 func renderGauge(label string, value float64, barWidth int, selected bool) string {
 	bar := renderBar(value, barWidth)
 
-	grade := mutedStyle.Render(score.LetterGrade(value))
 	name := fmt.Sprintf("%-*s", gaugeLabelWidth, truncate(label, gaugeLabelWidth))
 	marker := "  "
 	if selected {
-		marker = selectedMarkerStyle.Render("▸ ")
+		marker = selectedMarkerStyle.Render(selectionMarker + " ")
 		name = selectedLabelStyle.Render(name)
 	}
-	return fmt.Sprintf("%s%s %s %5.1f%s", marker, name, bar, value, grade)
+	return fmt.Sprintf("%s%s %s %5.1f%s", marker, name, bar, value, mutedStyle.Width(2).Render(score.LetterGrade(value)))
 }
 
 func renderGaugeDetail(cat score.CategoryScore, width int) string {
 	barWidth := clampWidth(width/2-gaugeDetailBarWidthOverhead, 8, 24)
+	rawBudget := width - gaugeDetailOverhead - barWidth
+	if rawBudget < minRawBudget {
+		rawBudget = 0
+	}
 	lines := make([]string, 0, 1+len(cat.Subs))
 	lines = append(lines, titleStyle.Render(cat.Label+" indicators"))
 	for _, s := range cat.Subs {
@@ -91,10 +104,12 @@ func renderGaugeDetail(cat score.CategoryScore, width int) string {
 		bar := renderBar(s.Value, barWidth)
 		val := lipgloss.NewStyle().Foreground(barColor(s.Value)).
 			Render(fmt.Sprintf("%5.1f", s.Value))
-
-		grade := mutedStyle.Render(score.LetterGrade(s.Value))
-		raw := mutedStyle.Render(truncate(s.Raw, 28))
-		lines = append(lines, fmt.Sprintf("%s %s %s%s  %s", name, bar, val, grade, raw))
+		grade := mutedStyle.Width(2).Render(score.LetterGrade(s.Value))
+		line := fmt.Sprintf("%s %s %s%s", name, bar, val, grade)
+		if rawBudget > 0 {
+			line += "  " + mutedStyle.Render(truncate(s.Raw, min(rawBudget, 28)))
+		}
+		lines = append(lines, line)
 	}
 	return detailStyle.Render(strings.Join(lines, "\n"))
 }

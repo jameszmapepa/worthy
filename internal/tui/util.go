@@ -4,7 +4,7 @@ import (
 	"image/color"
 	"strings"
 
-	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 )
 
 func truncate(s string, n int) string {
@@ -52,36 +52,28 @@ func renderBar(value float64, width int) string {
 	filled := min(int(value/100*float64(width)+0.5), width)
 
 	var b strings.Builder
+	b.Grow(width*len(barFilled) + 32*(filled/2+2))
 
 	prev := -1
-	runLen := 0
 	for i := range filled {
-
 		cellValue := float64(i+1) / float64(width) * 100
 		ci := gradientIndex(cellValue, len(scoreGradient))
-		if ci == prev {
-			runLen++
-		} else {
-			if prev >= 0 {
-				b.WriteString(
-					lipgloss.NewStyle().Foreground(scoreGradient[prev]).
-						Render(strings.Repeat(barFilled, runLen)),
-				)
-			}
+		if ci != prev {
+			b.WriteString(gradientSGR[ci])
 			prev = ci
-			runLen = 1
+		}
+		b.WriteString(barFilled)
+	}
+	if width-filled > 0 {
+		b.WriteString(trackSGR)
+		for range width - filled {
+			b.WriteString(barEmpty)
 		}
 	}
-	if prev >= 0 {
-		b.WriteString(
-			lipgloss.NewStyle().Foreground(scoreGradient[prev]).
-				Render(strings.Repeat(barFilled, runLen)),
-		)
+	if width > 0 {
+		b.WriteString(ansi.ResetStyle)
 	}
-
-	track := lipgloss.NewStyle().Foreground(colorTrackEmpty).
-		Render(strings.Repeat(barEmpty, width-filled))
-	return b.String() + track
+	return b.String()
 }
 
 var sparklineRunes = []rune{'▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'}

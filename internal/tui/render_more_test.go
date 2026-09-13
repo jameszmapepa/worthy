@@ -40,7 +40,7 @@ func TestRenderDispatchesAllViews(t *testing.T) {
 
 func TestFetchCmdErrorPath(t *testing.T) {
 	m := New(context.Background(), github.NewClient(), "o", "r")
-	updated, _ := m.Update(resultMsg{err: errors.New("collect failed")})
+	updated, _ := m.Update(resultMsg{gen: m.fetchGen, err: errors.New("collect failed")})
 	if updated.(Model).state != stateErrored {
 		t.Error("error resultMsg should move to errored state")
 	}
@@ -50,7 +50,7 @@ func TestFetchCmdReturnsResultMsgFromCancelledContext(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	m := New(ctx, github.NewClient(), "torvalds", "linux")
-	msg := m.fetchCmd()()
+	msg := m.collectCmd()()
 	if _, ok := msg.(resultMsg); !ok {
 		t.Errorf("fetchCmd produced %T, want resultMsg", msg)
 	}
@@ -64,7 +64,7 @@ func TestSeverityGlyphCritical(t *testing.T) {
 }
 
 func TestRenderGatesEmpty(t *testing.T) {
-	out := renderGates(nil)
+	out := renderGates(nil, 80)
 	if !strings.Contains(out, "No gates") {
 		t.Errorf("empty gates render = %q", out)
 	}
@@ -74,7 +74,7 @@ func TestRenderGatesCriticalCap(t *testing.T) {
 	cap40 := 40.0
 	out := renderGates([]score.Gate{
 		{Key: "stale_or_archived", Severity: score.SeverityCritical, Title: "Archived", Detail: "dead", CapTo: &cap40},
-	})
+	}, 80)
 	if !strings.Contains(out, glyphCritical) || !strings.Contains(out, "caps 40") {
 		t.Errorf("critical gate render missing glyph/cap:\n%s", out)
 	}
