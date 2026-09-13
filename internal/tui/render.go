@@ -117,7 +117,11 @@ func (m Model) renderError() string {
 	var b strings.Builder
 	b.WriteString(errStyle.Render("Could not score " + m.owner + "/" + m.repo))
 	b.WriteString("\n\n")
-	b.WriteString(lipgloss.NewStyle().Width(max(m.width, 20)).Render(m.err.Error()))
+	errText := "unknown error"
+	if m.err != nil {
+		errText = m.err.Error()
+	}
+	b.WriteString(lipgloss.NewStyle().Width(max(m.width, 20)).Render(errText))
 	if isRateLimit(m.err) {
 		b.WriteString("\n\n")
 		b.WriteString(mutedStyle.Render(

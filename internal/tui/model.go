@@ -401,10 +401,36 @@ func (m *Model) resetSelection() {
 
 // View renders the current state. Cell-motion mouse mode is on so the wheel
 // scrolls the body; terminals still allow native text selection with shift.
+// The window title names the repo, and while fetching the terminal's own
+// progress indicator (taskbar or tab, where supported) tracks the stages.
 func (m Model) View() tea.View {
 	v := tea.NewView(m.render())
 	v.MouseMode = tea.MouseModeCellMotion
+	v.WindowTitle = m.windowTitle()
+	v.ProgressBar = m.progressBar()
 	return v
+}
+
+func (m Model) windowTitle() string {
+	title := "worthy · " + m.owner + "/" + m.repo
+	if m.state == stateLoaded && m.report.Grade != "" {
+		title += " · Grade " + m.report.Grade
+	}
+	return title
+}
+
+func (m Model) progressBar() *tea.ProgressBar {
+	switch m.state {
+	case stateLoading:
+		if len(m.stages) == 0 {
+			return tea.NewProgressBar(tea.ProgressBarIndeterminate, 0)
+		}
+		return tea.NewProgressBar(tea.ProgressBarDefault, m.stagesFinished()*100/len(m.stages))
+	case stateErrored:
+		return tea.NewProgressBar(tea.ProgressBarError, 100)
+	default:
+		return nil
+	}
 }
 
 // Run constructs and runs the TUI program to completion, blocking until quit.
