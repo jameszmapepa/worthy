@@ -408,7 +408,6 @@ func TestPRResponsiveness(t *testing.T) {
 
 func zeros(n int) []int { return make([]int, n) }
 
-// repeat: 2 args → repeat(v, n) makes n copies of v; 3+ args → literal slice.
 func repeat(vals ...int) []int {
 	if len(vals) == 2 {
 		out := make([]int, vals[1])

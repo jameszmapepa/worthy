@@ -114,7 +114,7 @@ func TestCollect_OpenPRs_StaleNewcomerThreshold(t *testing.T) {
 	}
 }
 
-// A2: open-PR failure must degrade gracefully (open_pulls in Partial, counts zero).
+// A2.
 func TestCollect_OpenPRs_RateLimited_DegradesToPartial(t *testing.T) {
 	now, _ := time.Parse(time.RFC3339, "2026-06-22T00:00:00Z")
 
@@ -157,7 +157,7 @@ func TestCollect_OpenPRs_RateLimited_DegradesToPartial(t *testing.T) {
 	}
 }
 
-// A2: open-PR fetch must use state=open query parameter.
+// A2.
 func TestCollect_OpenPRs_UsesStateOpenQuery(t *testing.T) {
 	now, _ := time.Parse(time.RFC3339, "2026-06-22T00:00:00Z")
 

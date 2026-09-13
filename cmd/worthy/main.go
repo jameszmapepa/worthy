@@ -193,8 +193,6 @@ func version() string {
 	return "(devel)"
 }
 
-func asciiFromEnv() bool { return envTruthy("WORTHY_ASCII") }
-
 func envTruthy(name string) bool {
 	switch strings.ToLower(strings.TrimSpace(os.Getenv(name))) {
 	case "1", "true", "yes", "on":

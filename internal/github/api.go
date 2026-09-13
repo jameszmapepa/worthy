@@ -11,7 +11,6 @@ import (
 	"time"
 )
 
-// pageSize is GitHub's maximum items-per-page for list endpoints.
 const pageSize = 100
 
 // Repository fetches the core repository object.
@@ -27,7 +26,7 @@ func (c *Client) Repository(ctx context.Context, owner, repo string) (*Repo, err
 	return &r, nil
 }
 
-// CommunityProfile fetches community/profile metrics; returns *NotFoundError for forks because the endpoint 404s there.
+// CommunityProfile fetches community/profile metrics.
 func (c *Client) CommunityProfile(ctx context.Context, owner, repo string) (*CommunityProfile, error) {
 	var p CommunityProfile
 	path := fmt.Sprintf("/repos/%s/%s/community/profile",
@@ -75,7 +74,7 @@ func (c *Client) CommitCountSince(ctx context.Context, owner, repo string, since
 	return len(sink), nil
 }
 
-// SearchIssueCount returns the total_count for a GitHub search query; the search endpoint has its own separate rate-limit budget.
+// SearchIssueCount returns the total_count for a GitHub search query.
 func (c *Client) SearchIssueCount(ctx context.Context, query string) (int, error) {
 	var r searchResult
 	path := "/search/issues?per_page=1&q=" + url.QueryEscape(query)
@@ -162,7 +161,7 @@ func (c *Client) RecentPullsByCreation(ctx context.Context, owner, repo string) 
 	return ps, nil
 }
 
-// RecentIssues fetches up to one page of issues; the GitHub API includes pull requests in this endpoint, so callers must filter using Issue.IsPullRequest.
+// RecentIssues fetches up to one page of issues.
 func (c *Client) RecentIssues(ctx context.Context, owner, repo, state string) ([]Issue, error) {
 	var is []Issue
 
@@ -193,8 +192,6 @@ func (c *Client) FileContent(ctx context.Context, owner, repo, path string) ([]b
 	return c.getRaw(ctx, endpoint)
 }
 
-// encodeFilePath percent-encodes each path segment while preserving slash separators.
-// url.PathEscape would encode "/" as "%2F" and break directory structure.
 func encodeFilePath(p string) string {
 	segments := strings.Split(p, "/")
 	escaped := make([]string, len(segments))

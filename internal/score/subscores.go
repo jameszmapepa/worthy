@@ -227,7 +227,6 @@ const (
 	prResponsivenessMaxStale = 5.0
 )
 
-// prResponsiveness blends median open-PR age (0.6) with stale-newcomer count (0.4); age captures the full queue while stale-newcomer count is the contributor-relevant subset.
 func prResponsiveness(raw RawMetrics) SubScore {
 	const formula = "0 open PRs → 50; 0.6·freshness(median age) + 0.4·stale-penalty"
 	if raw.OpenPRCount == 0 {

@@ -11,7 +11,7 @@ import (
 	"time"
 )
 
-// A1: ANSI/OSC sequences in API-sourced fields must be stripped before TUI rendering.
+// A1.
 func TestCollect_ANSIStripped_FromRepoPresentationFields(t *testing.T) {
 	now, _ := time.Parse(time.RFC3339, "2026-06-22T00:00:00Z")
 

@@ -20,7 +20,7 @@ var (
 	capIntegrity = 80.0
 )
 
-// Gate is a conditional annotation on a Report; a non-nil CapTo caps the adjusted composite score.
+// Gate is a conditional annotation on a Report.
 type Gate struct {
 	Key        string
 	Severity   string
@@ -57,7 +57,6 @@ func evaluateGates(raw RawMetrics, rawComposite float64, subs subLookup) []Gate 
 	return gates
 }
 
-// busFactorGateThreshold is the contributor-count ceiling for the bus_factor gate; raised from 2 to 4 because ≤2 was bypassable via two throwaway alt-account commits.
 const busFactorGateThreshold = 4
 
 func busFactorGate(raw RawMetrics) (Gate, bool) {

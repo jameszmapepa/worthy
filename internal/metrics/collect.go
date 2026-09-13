@@ -14,10 +14,9 @@ import (
 	"github.com/jameszmapepa/worthy/internal/score"
 )
 
-// ceiling: 8 stays far under GitHub's secondary concurrent-request limit; raise cautiously.
 const maxConcurrency = 8
 
-// Collect gathers repository health signals with now injected for deterministic testing; non-context errors degrade to RawMetrics.Partial.
+// Collect gathers repository health signals with now injected for deterministic testing.
 func Collect(ctx context.Context, c *github.Client, owner, repo string, now time.Time, opts ...Option) (score.RawMetrics, error) {
 	var o options
 	for _, opt := range opts {
@@ -114,7 +113,6 @@ func Collect(ctx context.Context, c *github.Client, owner, repo string, now time
 	return raw, nil
 }
 
-// applyRepo strips ANSI/OSC sequences from untrusted API fields before terminal rendering to prevent control-code injection.
 func applyRepo(raw *score.RawMetrics, repoData *github.Repo, now time.Time) {
 	raw.Stars = repoData.Stargazers
 	raw.Watchers = repoData.Watchers

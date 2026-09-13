@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-// A5: getRaw on 403/remaining=0 must return *RateLimitError (regression: fell through to generic error).
+// A5.
 func TestGetRaw_403RateLimited_ReturnsRateLimitError(t *testing.T) {
 	reset := time.Now().Add(30 * time.Minute).Unix()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -37,7 +37,7 @@ func TestGetRaw_403RateLimited_ReturnsRateLimitError(t *testing.T) {
 	}
 }
 
-// A5: getRaw on 429/remaining=0 must also yield *RateLimitError.
+// A5.
 func TestGetRaw_429RateLimited_ReturnsRateLimitError(t *testing.T) {
 	reset := time.Now().Add(time.Minute).Unix()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -56,7 +56,7 @@ func TestGetRaw_429RateLimited_ReturnsRateLimitError(t *testing.T) {
 	}
 }
 
-// A5: 403 without remaining=0 must NOT be a *RateLimitError.
+// A5.
 func TestGetRaw_403WithoutRemainingZeroIsGenericError(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("X-RateLimit-Remaining", "50")

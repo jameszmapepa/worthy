@@ -29,8 +29,7 @@ type contributorResult struct {
 }
 
 type commitResult struct {
-	weekly []int
-	// hasFallback distinguishes a real 0 from "no fallback data" when weekly is empty.
+	weekly      []int
 	weeklyAvg   float64
 	hasFallback bool
 	partial     string
@@ -173,7 +172,6 @@ func collectCommits(gctx context.Context, c *github.Client, owner, repo string, 
 	return nil
 }
 
-// collectNewcomerLabels uses the Search API, which has a separate rate-limit budget.
 func collectNewcomerLabels(gctx context.Context, c *github.Client, owner, repo string, sem *semaphore.Weighted, out *newcomerLabelResult) error {
 	base := fmt.Sprintf(
 		`repo:%s/%s is:issue is:open label:"good first issue","good-first-issue","help wanted","help-wanted"`,
@@ -383,7 +381,6 @@ func prCreationCohort(prs []github.PullRequest, now time.Time) (merged, open int
 	return merged, open
 }
 
-// ceiling: ≤100 open PRs (one page); signal is directionally correct for larger repos.
 func collectOpenPulls(gctx context.Context, c *github.Client, owner, repo string, sem *semaphore.Weighted, now time.Time, out *openPullsResult) error {
 	var prs []github.PullRequest
 	err := withCall(gctx, sem, func() error {
