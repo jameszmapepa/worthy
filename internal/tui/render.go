@@ -112,6 +112,11 @@ func (m Model) renderError() string {
 		errText = m.err.Error()
 	}
 	b.WriteString(lipgloss.NewStyle().Width(max(m.width, 20)).Render(errText))
+	var se *github.ServerError
+	if errors.As(m.err, &se) {
+		b.WriteString("\n\n")
+		b.WriteString(mutedStyle.Render("Transient GitHub error; worthy already retried twice."))
+	}
 	if isRateLimit(m.err) {
 		b.WriteString("\n\n")
 		b.WriteString(mutedStyle.Render(

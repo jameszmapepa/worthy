@@ -40,6 +40,19 @@ func (e *RateLimitError) Error() string {
 		e.Limit, e.Endpoint, wait, e.Reset.Format(time.Kitchen))
 }
 
+// ServerError is returned when GitHub answers 5xx after the retries are spent.
+type ServerError struct {
+	Status   int
+	Endpoint string
+}
+
+func (e *ServerError) Error() string {
+	return fmt.Sprintf("github %s returned %d %s; GitHub is having trouble, try again in a moment",
+		e.Endpoint, e.Status, http.StatusText(e.Status))
+}
+
+const serverErrorRetries = 2
+
 // NotFoundError is returned for a 404 response.
 type NotFoundError struct{ Endpoint string }
 
@@ -170,6 +183,15 @@ func (c *Client) getWithHeader(ctx context.Context, path string, out any) (http.
 		case isRateLimited(status, header):
 			return nil, rateLimitError(header, path)
 
+		case status >= http.StatusInternalServerError:
+			if attempt >= serverErrorRetries {
+				return nil, &ServerError{Status: status, Endpoint: path}
+			}
+			if err := sleep(ctx, c.retryWait); err != nil {
+				return nil, err
+			}
+			continue
+
 		default:
 			return nil, fmt.Errorf("github %s returned %d: %s", path, status, snippet(body))
 		}
@@ -178,19 +200,29 @@ func (c *Client) getWithHeader(ctx context.Context, path string, out any) (http.
 
 // getRaw fetches raw file bytes; the default content endpoint returns base64-encoded JSON, requiring a different Accept header.
 func (c *Client) getRaw(ctx context.Context, path string) ([]byte, error) {
-	header, body, status, err := c.doGet(ctx, path, "application/vnd.github.raw+json")
-	if err != nil {
-		return nil, err
-	}
-	switch {
-	case status == http.StatusOK:
-		return body, nil
-	case status == http.StatusNotFound:
-		return nil, &NotFoundError{Endpoint: path}
-	case isRateLimited(status, header):
-		return nil, rateLimitError(header, path)
-	default:
-		return nil, fmt.Errorf("github %s returned %d: %s", path, status, snippet(body))
+	for attempt := 0; ; attempt++ {
+		header, body, status, err := c.doGet(ctx, path, "application/vnd.github.raw+json")
+		if err != nil {
+			return nil, err
+		}
+		switch {
+		case status == http.StatusOK:
+			return body, nil
+		case status == http.StatusNotFound:
+			return nil, &NotFoundError{Endpoint: path}
+		case isRateLimited(status, header):
+			return nil, rateLimitError(header, path)
+		case status >= http.StatusInternalServerError:
+			if attempt >= serverErrorRetries {
+				return nil, &ServerError{Status: status, Endpoint: path}
+			}
+			if err := sleep(ctx, c.retryWait); err != nil {
+				return nil, err
+			}
+			continue
+		default:
+			return nil, fmt.Errorf("github %s returned %d: %s", path, status, snippet(body))
+		}
 	}
 }
 
@@ -269,6 +301,9 @@ func rateLimitError(h http.Header, path string) *RateLimitError {
 
 func snippet(b []byte) string {
 	s := strings.TrimSpace(string(b))
+	if strings.HasPrefix(s, "<") {
+		return "(html error page)"
+	}
 	if len(s) > 200 {
 		return s[:200] + "..."
 	}

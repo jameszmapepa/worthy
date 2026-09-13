@@ -2,8 +2,10 @@ package github
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -176,5 +178,54 @@ func TestDefaultCacheDir_EndsWithWorthy(t *testing.T) {
 	}
 	if dir == "" || dir[len(dir)-6:] != "worthy" {
 		t.Errorf("cache dir = %q", dir)
+	}
+}
+
+func TestServerError_RetriedThenSucceeds(t *testing.T) {
+	var hits atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		if hits.Add(1) < 3 {
+			w.WriteHeader(http.StatusGatewayTimeout)
+			_, _ = w.Write([]byte("<!DOCTYPE html><!-- Hello future GitHubber! -->"))
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{}`))
+	}))
+	defer srv.Close()
+	if err := newTestClient(srv).get(context.Background(), "/repos/a/b", nil); err != nil {
+		t.Fatalf("two 504s then 200 should succeed, got %v", err)
+	}
+	if hits.Load() != 3 {
+		t.Errorf("hits = %d, want 3", hits.Load())
+	}
+}
+
+func TestServerError_ExhaustedIsTypedWithoutHTML(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusGatewayTimeout)
+		_, _ = w.Write([]byte("<!DOCTYPE html><!-- Hello future GitHubber! -->"))
+	}))
+	defer srv.Close()
+	c := newTestClient(srv)
+	err := c.get(context.Background(), "/repos/a/b", nil)
+	var se *ServerError
+	if !errors.As(err, &se) || se.Status != http.StatusGatewayTimeout {
+		t.Fatalf("want *ServerError 504, got %T %v", err, err)
+	}
+	if strings.Contains(err.Error(), "DOCTYPE") || strings.Contains(err.Error(), "GitHubber") {
+		t.Errorf("error must not echo the HTML page: %v", err)
+	}
+	if _, rerr := c.getRaw(context.Background(), "/repos/a/b/contents/x"); !errors.As(rerr, &se) {
+		t.Errorf("getRaw should return *ServerError too, got %T", rerr)
+	}
+}
+
+func TestSnippetHidesHTML(t *testing.T) {
+	if got := snippet([]byte("<!DOCTYPE html><html>")); got != "(html error page)" {
+		t.Errorf("snippet = %q", got)
+	}
+	if got := snippet([]byte(`{"message":"bad"}`)); got != `{"message":"bad"}` {
+		t.Errorf("snippet = %q", got)
 	}
 }

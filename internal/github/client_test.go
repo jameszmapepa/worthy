@@ -806,7 +806,7 @@ func TestGet_LongBodyTruncatedInError(t *testing.T) {
 		longBody[i] = 'x'
 	}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusInternalServerError)
+		w.WriteHeader(http.StatusUnprocessableEntity)
 		_, _ = w.Write(longBody)
 	}))
 	defer srv.Close()
@@ -814,7 +814,7 @@ func TestGet_LongBodyTruncatedInError(t *testing.T) {
 	c := newTestClient(srv)
 	err := c.get(context.Background(), "/test", nil)
 	if err == nil {
-		t.Fatal("expected error for 500")
+		t.Fatal("expected error for 422")
 	}
 	if !contains(err.Error(), "...") {
 		t.Errorf("expected truncated body with '...' in error; got: %q", err.Error())

@@ -6,6 +6,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/jameszmapepa/worthy/internal/github"
 	"github.com/jameszmapepa/worthy/internal/metrics"
 	"github.com/jameszmapepa/worthy/internal/score"
 )
@@ -93,5 +94,15 @@ func TestRefreshForcesRevalidation(t *testing.T) {
 	next, _ := m.Update(keyPress("r"))
 	if !next.(Model).revalidate {
 		t.Error("r should force revalidation on the next fetch")
+	}
+}
+
+func TestServerErrorViewExplainsRetry(t *testing.T) {
+	m := newTestModel()
+	m.state = stateErrored
+	m.err = &github.ServerError{Status: 504, Endpoint: "/repos/a/b"}
+	out := m.render()
+	if !strings.Contains(out, "504 Gateway Timeout") || !strings.Contains(out, "retried twice") {
+		t.Errorf("server error view:\n%s", out)
 	}
 }
