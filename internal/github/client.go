@@ -19,10 +19,6 @@ const (
 	apiVersion     = "2022-11-28"
 	userAgent      = "worthy (https://github.com/jameszmapepa/worthy)"
 
-	// The default Transport caps idle conns per host at 2, serialising concurrent
-	// calls and defeating the bounded worker pool.
-	// ceiling: must track metrics.maxConcurrency (8); duplicated to avoid an import
-	// cycle — keep in sync if concurrency changes.
 	maxIdleConnsPerHost = 8
 )
 
@@ -58,7 +54,7 @@ type NotFoundError struct{ Endpoint string }
 
 func (e *NotFoundError) Error() string { return fmt.Sprintf("not found: %s", e.Endpoint) }
 
-// Client is a minimal GitHub REST client; call NewClient to construct one. Safe for concurrent use.
+// Client is a minimal GitHub REST client.
 type Client struct {
 	httpClient *http.Client
 	baseURL    string
@@ -147,7 +143,6 @@ func (c *Client) get(ctx context.Context, path string, out any) error {
 	return err
 }
 
-// getWithHeader is like get but also returns the response header, needed for the Link-header pagination-count trick.
 func (c *Client) getWithHeader(ctx context.Context, path string, out any) (http.Header, error) {
 	for attempt := 0; ; attempt++ {
 		header, body, status, err := c.doGet(ctx, path, "application/vnd.github+json")
@@ -198,7 +193,6 @@ func (c *Client) getWithHeader(ctx context.Context, path string, out any) (http.
 	}
 }
 
-// getRaw fetches raw file bytes; the default content endpoint returns base64-encoded JSON, requiring a different Accept header.
 func (c *Client) getRaw(ctx context.Context, path string) ([]byte, error) {
 	for attempt := 0; ; attempt++ {
 		header, body, status, err := c.doGet(ctx, path, "application/vnd.github.raw+json")

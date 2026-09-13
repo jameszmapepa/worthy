@@ -83,13 +83,12 @@ type Model struct {
 // Option configures a Model.
 type Option func(*Model)
 
-// WithNow injects the reference time for time-relative metrics; defaults to time.Now() at construction.
+// WithNow injects the reference time for time-relative metrics.
 func WithNow(now time.Time) Option {
 	return func(m *Model) { m.now = now }
 }
 
-// WithASCIIIcons selects the ASCII-tag language badge (e.g. "TS") instead of the
-// Nerd Font devicon glyph, for terminals without a Nerd Font installed.
+// WithASCIIIcons selects the ASCII-tag language badge (e.g.
 func WithASCIIIcons(ascii bool) Option {
 	return func(m *Model) { m.asciiIcons = ascii }
 }

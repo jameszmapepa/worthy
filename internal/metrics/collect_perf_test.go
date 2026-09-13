@@ -11,7 +11,7 @@ import (
 
 var perfNow = time.Date(2026, 6, 22, 0, 0, 0, 0, time.UTC)
 
-// TestPerf_RetryBudgetBounded: client() sets WithRetry(2, 1ms) → 1 initial + 2 retries = 3 hits.
+// TestPerf_RetryBudgetBounded.
 func TestPerf_RetryBudgetBounded(t *testing.T) {
 	var commitActivityHits atomic.Int64
 
@@ -44,7 +44,7 @@ func TestPerf_RetryBudgetBounded(t *testing.T) {
 	}
 }
 
-// TestPerf_LongPoleNotSerialized: two 80ms poles must overlap (~80ms), not serialize (~160ms); 140ms ceiling sits between.
+// TestPerf_LongPoleNotSerialized.
 func TestPerf_LongPoleNotSerialized(t *testing.T) {
 	const poleSleep = 80 * time.Millisecond
 

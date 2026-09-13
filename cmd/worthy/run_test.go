@@ -81,16 +81,16 @@ func TestHelpAndVersionExitCleanly(t *testing.T) {
 	}
 }
 
-func TestAsciiFromEnv(t *testing.T) {
+func TestEnvTruthy(t *testing.T) {
 	for _, v := range []string{"1", "true", "YES", "on"} {
 		t.Setenv("WORTHY_ASCII", v)
-		if !asciiFromEnv() {
+		if !envTruthy("WORTHY_ASCII") {
 			t.Errorf("WORTHY_ASCII=%q should enable ascii mode", v)
 		}
 	}
 	for _, v := range []string{"", "0", "no", "off", "garbage"} {
 		t.Setenv("WORTHY_ASCII", v)
-		if asciiFromEnv() {
+		if envTruthy("WORTHY_ASCII") {
 			t.Errorf("WORTHY_ASCII=%q should NOT enable ascii mode", v)
 		}
 	}

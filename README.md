@@ -1,7 +1,7 @@
 # worthy
 
 [![CI](https://github.com/jameszmapepa/worthy/actions/workflows/ci.yml/badge.svg)](https://github.com/jameszmapepa/worthy/actions/workflows/ci.yml)
-![Version](https://img.shields.io/badge/version-0.2.0-blue)
+![Version](https://img.shields.io/badge/version-0.3.0-blue)
 ![Go](https://img.shields.io/badge/go-1.26%2B-00ADD8)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 

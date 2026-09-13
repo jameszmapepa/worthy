@@ -17,7 +17,6 @@ type fixture struct {
 	body   string
 }
 
-// mux: unregistered paths return 500 so tests fail loudly on unexpected Collect endpoints.
 func mux(routes map[string]fixture) *httptest.Server {
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		path := r.URL.Path

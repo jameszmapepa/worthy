@@ -38,7 +38,7 @@ type Label struct {
 	Name string `json:"name"`
 }
 
-// Issue is the subset of an issue we read; the GitHub /issues endpoint also returns pull requests, which PullRequest non-nil marks.
+// Issue is the subset of an issue we read.
 type Issue struct {
 	Number      int        `json:"number"`
 	State       string     `json:"state"`
@@ -90,7 +90,7 @@ type ContributorStats struct {
 	Weeks  []ContributorWeek `json:"weeks"`
 }
 
-// CommunityProfile is the subset of the community/profile API response; HealthPercentage reflects only file presence, not content quality.
+// CommunityProfile is the subset of the community/profile API response.
 type CommunityProfile struct {
 	HealthPercentage int `json:"health_percentage"`
 	Files            struct {

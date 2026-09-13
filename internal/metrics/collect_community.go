@@ -20,7 +20,6 @@ var newcomerAssocs = map[string]bool{
 
 const newcomerWindow = 90 * 24 * time.Hour
 
-// ceiling: 12 issues × 1 API call each.
 const issueSampleCap = 12
 
 func processPulls(prs []github.PullRequest, now time.Time) (merged, unmerged, newcomerMerged, newcomerUnmerged int) {
@@ -56,7 +55,6 @@ func isBot(u github.User) bool {
 	return strings.HasSuffix(u.Login, "[bot]") || u.Type == "Bot"
 }
 
-// ceiling: samples up to issueSampleCap (12) issues with one API call each.
 func medianTTFR(
 	gctx context.Context,
 	c *github.Client,
@@ -135,7 +133,6 @@ var staleOpenPRNewcomerAssocs = map[string]bool{
 
 const staleNewcomerOpenPRDays = 30
 
-// ceiling: ≤100 PRs (one page); repos with >100 open PRs under-count stale newcomer PRs.
 func processOpenPulls(prs []github.PullRequest, now time.Time) (openCount int, medianAgeDays float64, staleNewcomerCount int) {
 	ages := make([]float64, 0, len(prs))
 	for _, pr := range prs {

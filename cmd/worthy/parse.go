@@ -41,8 +41,6 @@ func parseRepoArg(arg string) (owner, repo string, err error) {
 	return owner, repo, nil
 }
 
-// validateOwnerRepo guards the trust boundary: it rejects path traversal and
-// any character that could inject params or path segments into downstream URLs.
 func validateOwnerRepo(owner, repo string) error {
 	if !ownerPattern.MatchString(owner) {
 		return fmt.Errorf("invalid owner %q: must be alphanumerics and internal hyphens", owner)

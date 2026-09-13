@@ -3,7 +3,7 @@ package tui
 import "testing"
 
 func TestGradientIndex(t *testing.T) {
-	const n = 11 // gradientSteps-like span for the test
+	const n = 11
 	tests := []struct {
 		value float64
 		want  int

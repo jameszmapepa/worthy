@@ -4,8 +4,7 @@ import "sort"
 
 const driversN = 3
 
-// Drivers returns the top and bottom driversN sub-scores across all categories, ordered best-first and worst-first; ties preserve category/sub-score order.
-// ceiling: if driversN ever exceeds half the sub-score count, dedupe value overlap between strong and weak sets.
+// Drivers returns the top and bottom driversN sub-scores across all categories, ordered best-first and worst-first.
 func Drivers(r Report) (strong, weak []SubScore) {
 	var all []SubScore
 	for _, c := range r.Categories {

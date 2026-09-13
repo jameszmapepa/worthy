@@ -3,7 +3,7 @@ package score
 
 import "sort"
 
-// RawMetrics is the pre-computed input to the scoring engine; zero values are neutral defaults and Partial lists skipped metrics.
+// RawMetrics is the pre-computed input to the scoring engine.
 type RawMetrics struct {
 	CommitsLast52Weeks []int
 
@@ -39,8 +39,7 @@ type RawMetrics struct {
 	HasCI                  bool
 	HasSignedReleaseAssets bool
 	UsesPullRequestTarget  bool
-	// ceiling: single bool; replace with a richer status enum if per-file workflow fetching is added.
-	WorkflowsFetched bool
+	WorkflowsFetched       bool
 
 	OpenPRCount          int
 	MedianOpenPRAgeDays  float64

@@ -60,7 +60,7 @@ type Report struct {
 	Confidence ConfidenceLevel
 }
 
-// Evaluate scores a RawMetrics snapshot into a Report; pure, deterministic, and performs no I/O.
+// Evaluate scores a RawMetrics snapshot into a Report.
 func Evaluate(raw RawMetrics) Report {
 	activity := makeCategory(CategoryActivity, "Activity", weightActivity, []SubScore{
 		commitFrequency(raw),
@@ -159,7 +159,7 @@ func withWeight(s SubScore, w float64) SubScore {
 	return s
 }
 
-// LetterGrade maps a 0..100 score to a letter grade; callers must use this function rather than duplicating thresholds.
+// LetterGrade maps a 0..100 score to a letter grade.
 func LetterGrade(score float64) string {
 	switch {
 	case score >= 85:
