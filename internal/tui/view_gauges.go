@@ -91,7 +91,7 @@ func renderGauge(label string, value float64, barWidth int, selected bool) strin
 	name := fmt.Sprintf("%-*s", gaugeLabelWidth, truncate(label, gaugeLabelWidth))
 	marker := "  "
 	if selected {
-		marker = selectedMarkerStyle.Render("▸ ")
+		marker = selectedMarkerStyle.Render(selectionMarker + " ")
 		name = selectedLabelStyle.Render(name)
 	}
 	return fmt.Sprintf("%s%s %s %5.1f%s", marker, name, bar, value, mutedStyle.Width(2).Render(score.LetterGrade(value)))

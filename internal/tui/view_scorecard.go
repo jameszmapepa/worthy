@@ -151,7 +151,7 @@ func renderSubLine(s score.SubScore, barWidth, rawBudget int, sel bool) string {
 	marker := "  "
 	label := labelStyle.Width(subLabelWidth).Render(text)
 	if sel {
-		marker = selectedMarkerStyle.Render("▸ ")
+		marker = selectedMarkerStyle.Render(selectionMarker + " ")
 		label = selectedLabelStyle.Width(subLabelWidth).Render(text)
 	}
 	bar := renderBar(s.Value, barWidth)

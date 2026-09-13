@@ -2,6 +2,7 @@ package tui
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 
 	"charm.land/lipgloss/v2"
@@ -13,45 +14,104 @@ import (
 // footerGap is the blank lines between body and footer.
 const footerGap = 2
 
+// selectionMarker is the glyph renderSubLine and renderGauge put in front of
+// the selected row; syncViewport finds it to keep that row on screen.
+const selectionMarker = "▸"
+
+// detailBlockLines is how many lines a drill-down adds under its row.
+const detailBlockLines = 7
+
 func (m Model) render() string {
+	header := m.renderHeader()
+	footer := m.renderFooter()
+	if m.height <= 0 {
+		// Unknown height (tests, non-TTY): emit everything.
+		return header + "\n\n" + m.renderBody() + "\n\n" + footer
+	}
+	m.syncViewport(false)
+	return header + "\n\n" + m.viewport.View() + "\n\n" + footer
+}
+
+func (m Model) renderHeader() string {
 	grade := ""
 	if m.state == stateLoaded {
 		grade = m.report.Grade
 	}
-	header := renderHeaderPanel(
+	return renderHeaderPanel(
 		m.owner, m.repo, m.raw,
 		m.state == stateLoaded || m.hasRepo, m.client.Authenticated(), m.client.RateInfo(), m.width, grade, m.asciiIcons,
 	)
+}
 
-	var body string
+func (m Model) renderBody() string {
 	switch m.state {
 	case stateLoading:
-		body = m.renderLoading()
+		return m.renderLoading()
 	case stateErrored:
-		body = m.renderError()
+		return m.renderError()
 	default:
-		body = m.renderActiveView()
+		return m.renderActiveView()
 	}
+}
 
+// syncViewport sizes the body viewport to the space left by header and
+// footer and loads the current body. With follow set it also scrolls so the
+// selected row (and its drill-down) is on screen; manual scrolling passes
+// false so the user's position is kept.
+func (m *Model) syncViewport(follow bool) {
+	if m.height <= 0 {
+		return
+	}
+	header := m.renderHeader()
 	footer := m.renderFooter()
-	if m.height > 0 {
-		body = m.truncateBody(header, body, footer)
+	avail := max(m.height-lines(header)-lines(footer)-2*footerGap, 1)
+	body := m.renderBody()
+	m.viewport.SetWidth(m.width)
+	m.viewport.SetHeight(avail)
+	m.viewport.SetContent(body)
+	if !follow {
+		return
 	}
-
-	return header + "\n\n" + body + "\n\n" + footer
+	if m.selected == 0 && !m.expanded {
+		// First row: show the page from the top so the headline stays visible.
+		m.viewport.GotoTop()
+		return
+	}
+	sel := selectedLine(body)
+	if sel < 0 {
+		return
+	}
+	last := sel
+	if m.expanded {
+		last = min(sel+detailBlockLines, lines(body)-1)
+	}
+	m.ensureVisible(sel, last)
 }
 
-func (m Model) truncateBody(header, body, footer string) string {
-	headerLines := strings.Count(header, "\n") + 1
-	footerLines := strings.Count(footer, "\n") + 1
-	available := max(m.height-headerLines-footerLines-2*footerGap, 1)
-	lines := strings.Split(body, "\n")
-	if len(lines) <= available {
-		return body
+func (m *Model) ensureVisible(first, last int) {
+	top := m.viewport.YOffset()
+	h := m.viewport.Height()
+	switch {
+	case first < top:
+		m.viewport.SetYOffset(first)
+	case last >= top+h:
+		m.viewport.SetYOffset(max(last-h+1, 0))
+		if m.viewport.YOffset() > first {
+			m.viewport.SetYOffset(first)
+		}
 	}
-	trimmed := lines[:available-1]
-	return strings.Join(trimmed, "\n") + "\n" + mutedStyle.Render("↓ content truncated")
 }
+
+func selectedLine(body string) int {
+	for i, l := range strings.Split(body, "\n") {
+		if strings.Contains(l, selectionMarker) {
+			return i
+		}
+	}
+	return -1
+}
+
+func lines(s string) int { return strings.Count(s, "\n") + 1 }
 
 func (m Model) renderError() string {
 	var b strings.Builder
@@ -108,6 +168,9 @@ func (m Model) renderFooter() string {
 		hint = "↑↓ select · enter drill · ←→ switch view · r refresh · ? help · q quit"
 	default:
 		hint = "←→ switch view · r refresh · ? help · q quit"
+	}
+	if m.height > 0 && m.viewport.TotalLineCount() > m.viewport.VisibleLineCount() {
+		hint += fmt.Sprintf(" · ↕ %.0f%%", m.viewport.ScrollPercent()*100)
 	}
 	keys := mutedStyle.Render(hint)
 	// One line when it fits; otherwise tabs above hints, each clipped to width.

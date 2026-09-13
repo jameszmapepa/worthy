@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"charm.land/bubbles/v2/spinner"
+	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/jameszmapepa/worthy/internal/github"
@@ -61,6 +62,8 @@ type Model struct {
 	loadStart   time.Time
 	spinner     spinner.Model
 
+	viewport viewport.Model
+
 	fetchGen    int
 	fetchCancel context.CancelFunc
 	progress    chan tea.Msg
@@ -98,6 +101,7 @@ func New(ctx context.Context, client *github.Client, owner, repo string, opts ..
 		now:       time.Now(),
 		state:     stateLoading,
 		spinner:   spinner.New(),
+		viewport:  viewport.New(),
 		width:     80,
 		height:    0,
 		loadStart: time.Now(),
@@ -191,7 +195,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
+		m.syncViewport(true)
 		return m, nil
+
+	case tea.MouseWheelMsg:
+		m.syncViewport(false)
+		var cmd tea.Cmd
+		m.viewport, cmd = m.viewport.Update(msg)
+		return m, cmd
 
 	case tea.BackgroundColorMsg:
 		setTheme(msg.IsDark())
@@ -252,7 +263,6 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.helpVisible = !m.helpVisible
 		return m, nil
 	case "tab", "right", "l":
-
 		m.view = (m.view + 1) % viewCount
 		m.resetSelection()
 		return m, nil
@@ -282,20 +292,37 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case "j", "down":
 		if m.canSelect() {
 			m.moveSelection(1)
+		} else {
+			m.scroll(func() { m.viewport.ScrollDown(1) })
 		}
 		return m, nil
 	case "k", "up":
 		if m.canSelect() {
 			m.moveSelection(-1)
+		} else {
+			m.scroll(func() { m.viewport.ScrollUp(1) })
 		}
+		return m, nil
+	case "pgdown", "ctrl+d", "space":
+		m.scroll(m.viewport.HalfPageDown)
+		return m, nil
+	case "pgup", "ctrl+u":
+		m.scroll(m.viewport.HalfPageUp)
 		return m, nil
 	case "enter":
 		if m.canSelect() {
 			m.expanded = true
+			m.syncViewport(true)
 		}
 		return m, nil
 	}
 	return m, nil
+}
+
+// scroll applies a manual viewport movement against up-to-date content.
+func (m *Model) scroll(move func()) {
+	m.syncViewport(false)
+	move()
 }
 
 func (m Model) canSelect() bool {
@@ -333,16 +360,22 @@ func (m *Model) moveSelection(delta int) {
 	if m.selected >= n {
 		m.selected = n - 1
 	}
+	m.syncViewport(true)
 }
 
 func (m *Model) resetSelection() {
 	m.selected = 0
 	m.expanded = false
+	m.viewport.GotoTop()
+	m.syncViewport(true)
 }
 
-// View renders the current state.
+// View renders the current state. Cell-motion mouse mode is on so the wheel
+// scrolls the body; terminals still allow native text selection with shift.
 func (m Model) View() tea.View {
-	return tea.NewView(m.render())
+	v := tea.NewView(m.render())
+	v.MouseMode = tea.MouseModeCellMotion
+	return v
 }
 
 // Run constructs and runs the TUI program to completion, blocking until quit.
