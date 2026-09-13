@@ -69,9 +69,9 @@ func (m Model) renderLoading() string {
 	fmt.Fprintf(&b, "%s Scoring %s/%s … %s", m.spinner.View(), m.owner, m.repo,
 		mutedStyle.Render(fmt.Sprintf("(%s · %d/%d)", elapsed, m.stagesFinished(), len(m.stages))))
 	b.WriteString("\n\n")
+	wrap := lipgloss.NewStyle().Width(max(m.width-2, 20))
 	for _, s := range m.stages {
-		b.WriteString("  ")
-		b.WriteString(m.renderStage(s))
+		b.WriteString(wrap.MarginLeft(2).Render(m.renderStage(s)))
 		b.WriteString("\n")
 	}
 	return strings.TrimRight(b.String(), "\n")

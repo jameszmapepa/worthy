@@ -94,7 +94,7 @@ func renderQuestions(r score.Report, width, selected int, expanded bool) string 
 		b.WriteString(renderIntegritySection(r, integrity, barWidth, width, base, selected, expanded))
 	}
 
-	if leftover := renderLeftoverGates(r, groups, integrity); leftover != "" {
+	if leftover := renderLeftoverGates(r, groups, integrity, width); leftover != "" {
 		b.WriteString("\n")
 		b.WriteString(leftover)
 	}
@@ -111,8 +111,8 @@ func renderIntegritySection(r score.Report, items []questionItem, barWidth, widt
 	}
 
 	boxW := clampWidth(width-2, 30, 200)
-	textW := boxW - 2
-	rawBudget := max(textW-(scorecardLabelWidth+1+barWidth+1+5+1+2)-1, 6)
+	textW := panelTextWidth(boxW)
+	rawBudget := rawBudgetFor(textW, barWidth)
 
 	var b strings.Builder
 	header := lipgloss.NewStyle().Foreground(barColor(secCat.Value)).Bold(true).
@@ -127,7 +127,7 @@ func renderIntegritySection(r score.Report, items []questionItem, barWidth, widt
 		b.WriteString(renderSubLine(it.sub, barWidth, rawBudget, sel))
 		b.WriteString("\n")
 		if sel && expanded {
-			b.WriteString(renderDetail(it.sub, it.cat))
+			b.WriteString(renderDetail(it.sub, it.cat, textW))
 			b.WriteString("\n")
 		}
 	}
@@ -135,9 +135,7 @@ func renderIntegritySection(r score.Report, items []questionItem, barWidth, widt
 	keys := referencedGateKeys(items)
 	for _, gt := range r.Gates {
 		if keys[gt.Key] {
-			b.WriteString(renderGateBadge(gt))
-			b.WriteString("  ")
-			b.WriteString(mutedStyle.Render(gt.Detail))
+			b.WriteString(renderGateLine(gt, textW))
 			b.WriteString("\n")
 		}
 	}
@@ -147,9 +145,8 @@ func renderIntegritySection(r score.Report, items []questionItem, barWidth, widt
 
 func renderQuestionGroup(g questionGroup, barWidth, width, base, selected int, expanded bool, gates []score.Gate) string {
 	boxW := clampWidth(width-2, 30, 200)
-	textW := boxW - 2
-
-	rawBudget := max(textW-(scorecardLabelWidth+1+barWidth+1+5+1+2)-1, 6)
+	textW := panelTextWidth(boxW)
+	rawBudget := rawBudgetFor(textW, barWidth)
 
 	var b strings.Builder
 	header := lipgloss.NewStyle().Foreground(barColor(g.verdict.Value)).Bold(true).
@@ -164,15 +161,13 @@ func renderQuestionGroup(g questionGroup, barWidth, width, base, selected int, e
 		b.WriteString(renderSubLine(it.sub, barWidth, rawBudget, sel))
 		b.WriteString("\n")
 		if sel && expanded {
-			b.WriteString(renderDetail(it.sub, it.cat))
+			b.WriteString(renderDetail(it.sub, it.cat, textW))
 			b.WriteString("\n")
 		}
 	}
 
 	for _, gt := range groupGates(g, gates) {
-		b.WriteString(renderGateBadge(gt))
-		b.WriteString("  ")
-		b.WriteString(mutedStyle.Render(gt.Detail))
+		b.WriteString(renderGateLine(gt, textW))
 		b.WriteString("\n")
 	}
 
@@ -190,7 +185,7 @@ func groupGates(g questionGroup, gates []score.Gate) []score.Gate {
 	return out
 }
 
-func renderLeftoverGates(r score.Report, groups []questionGroup, integrityItems []questionItem) string {
+func renderLeftoverGates(r score.Report, groups []questionGroup, integrityItems []questionItem, width int) string {
 	referenced := map[string]bool{}
 	for _, g := range groups {
 		for k := range referencedGateKeys(g.items) {
@@ -205,9 +200,7 @@ func renderLeftoverGates(r score.Report, groups []questionGroup, integrityItems 
 		if referenced[gt.Key] {
 			continue
 		}
-		b.WriteString(renderGateBadge(gt))
-		b.WriteString("  ")
-		b.WriteString(mutedStyle.Render(gt.Detail))
+		b.WriteString(renderGateLine(gt, width))
 		b.WriteString("\n")
 	}
 	return strings.TrimRight(b.String(), "\n")

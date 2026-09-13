@@ -4,10 +4,14 @@ import (
 	"errors"
 	"strings"
 
+	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
+
 	"github.com/jameszmapepa/worthy/internal/github"
 )
 
-const footerReservedLines = 5
+// footerGap is the blank lines between body and footer.
+const footerGap = 2
 
 func (m Model) render() string {
 	grade := ""
@@ -29,16 +33,18 @@ func (m Model) render() string {
 		body = m.renderActiveView()
 	}
 
+	footer := m.renderFooter()
 	if m.height > 0 {
-		body = m.truncateBody(header, body)
+		body = m.truncateBody(header, body, footer)
 	}
 
-	return header + "\n\n" + body + "\n\n" + m.renderFooter()
+	return header + "\n\n" + body + "\n\n" + footer
 }
 
-func (m Model) truncateBody(header, body string) string {
+func (m Model) truncateBody(header, body, footer string) string {
 	headerLines := strings.Count(header, "\n") + 1
-	available := max(m.height-headerLines-footerReservedLines, 1)
+	footerLines := strings.Count(footer, "\n") + 1
+	available := max(m.height-headerLines-footerLines-2*footerGap, 1)
 	lines := strings.Split(body, "\n")
 	if len(lines) <= available {
 		return body
@@ -51,7 +57,7 @@ func (m Model) renderError() string {
 	var b strings.Builder
 	b.WriteString(errStyle.Render("Could not score " + m.owner + "/" + m.repo))
 	b.WriteString("\n\n")
-	b.WriteString(m.err.Error())
+	b.WriteString(lipgloss.NewStyle().Width(max(m.width, 20)).Render(m.err.Error()))
 	if isRateLimit(m.err) {
 		b.WriteString("\n\n")
 		b.WriteString(mutedStyle.Render(
@@ -104,7 +110,11 @@ func (m Model) renderFooter() string {
 		hint = "←→ switch view · r refresh · ? help · q quit"
 	}
 	keys := mutedStyle.Render(hint)
-	return tabs + "    " + keys
+	// One line when it fits; otherwise tabs above hints, each clipped to width.
+	if lipgloss.Width(tabs)+4+lipgloss.Width(keys) <= m.width {
+		return tabs + "    " + keys
+	}
+	return ansi.Truncate(tabs, m.width, "…") + "\n" + ansi.Truncate(keys, m.width, "…")
 }
 
 func isRateLimit(err error) bool {

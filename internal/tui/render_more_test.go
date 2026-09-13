@@ -64,7 +64,7 @@ func TestSeverityGlyphCritical(t *testing.T) {
 }
 
 func TestRenderGatesEmpty(t *testing.T) {
-	out := renderGates(nil)
+	out := renderGates(nil, 80)
 	if !strings.Contains(out, "No gates") {
 		t.Errorf("empty gates render = %q", out)
 	}
@@ -74,7 +74,7 @@ func TestRenderGatesCriticalCap(t *testing.T) {
 	cap40 := 40.0
 	out := renderGates([]score.Gate{
 		{Key: "stale_or_archived", Severity: score.SeverityCritical, Title: "Archived", Detail: "dead", CapTo: &cap40},
-	})
+	}, 80)
 	if !strings.Contains(out, glyphCritical) || !strings.Contains(out, "caps 40") {
 		t.Errorf("critical gate render missing glyph/cap:\n%s", out)
 	}
