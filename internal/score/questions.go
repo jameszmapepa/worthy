@@ -13,12 +13,12 @@ type QuestionScore struct {
 	CategoryKeys []string
 }
 
-func questionMessage(key, grade string, raw RawMetrics) string {
+func questionMessage(key, grade string, raw RawMetrics, ev evidence) string {
 	switch key {
 	case "maintained":
-		return maintainedMessage(grade, raw)
+		return maintainedMessageWith(grade, raw, ev)
 	case "newcomer":
-		return contributableMessage(grade, raw)
+		return contributableMessageWith(grade, raw, ev)
 	}
 	return ""
 }
@@ -61,7 +61,7 @@ func contributableGateCap(gates []Gate) float64 {
 	return cap
 }
 
-func computeQuestionScores(cats []CategoryScore, gates []Gate, raw RawMetrics) (maintained, contributable QuestionScore) {
+func computeQuestionScores(cats []CategoryScore, gates []Gate, raw RawMetrics, ev evidence) (maintained, contributable QuestionScore) {
 	byKey := make(map[string]CategoryScore, len(cats))
 	for _, c := range cats {
 		byKey[c.Key] = c
@@ -102,7 +102,7 @@ func computeQuestionScores(cats []CategoryScore, gates []Gate, raw RawMetrics) (
 			RawValue:     rawValue,
 			Value:        value,
 			Grade:        grade,
-			Message:      questionMessage(def.key, grade, raw),
+			Message:      questionMessage(def.key, grade, raw, ev),
 			CategoryKeys: keys,
 		}
 		switch def.key {
@@ -118,7 +118,7 @@ func computeQuestionScores(cats []CategoryScore, gates []Gate, raw RawMetrics) (
 // QuestionVerdicts returns the two per-question verdicts in display order.
 func QuestionVerdicts(r Report) []QuestionScore {
 	if r.Maintained.Key == "" && r.Contributable.Key == "" {
-		maintained, contributable := computeQuestionScores(r.Categories, r.Gates, RawMetrics{})
+		maintained, contributable := computeQuestionScores(r.Categories, r.Gates, RawMetrics{}, evidence{})
 		maintained.Message, contributable.Message = "", ""
 		return []QuestionScore{maintained, contributable}
 	}

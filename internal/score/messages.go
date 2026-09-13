@@ -1,17 +1,21 @@
 package score
 
 import (
-	"fmt"
+	"strconv"
 	"strings"
 	"unicode"
 	"unicode/utf8"
 )
 
+func itoa(n int) string { return strconv.Itoa(n) }
+
+func ftoa(f float64, decimals int) string { return strconv.FormatFloat(f, 'f', decimals, 64) }
+
 func plural(n int, singular, pluralForm string) string {
 	if n == 1 {
-		return fmt.Sprintf("%d %s", n, singular)
+		return itoa(n) + " " + singular
 	}
-	return fmt.Sprintf("%d %s", n, pluralForm)
+	return itoa(n) + " " + pluralForm
 }
 
 func agoDays(days int) string {
@@ -19,11 +23,11 @@ func agoDays(days int) string {
 	case days <= 0:
 		return "today"
 	case days < 30:
-		return fmt.Sprintf("%dd ago", days)
+		return itoa(days) + "d ago"
 	case days < 730:
-		return fmt.Sprintf("%dmo ago", days/30)
+		return itoa(days/30) + "mo ago"
 	default:
-		return fmt.Sprintf("%.1fy ago", float64(days)/365)
+		return ftoa(float64(days)/365, 1) + "y ago"
 	}
 }
 
@@ -34,7 +38,7 @@ func spanDays(days int) string {
 	case days < 730:
 		return plural(days/30, "month", "months")
 	default:
-		return fmt.Sprintf("%.1f years", float64(days)/365)
+		return ftoa(float64(days)/365, 1) + " years"
 	}
 }
 
@@ -45,9 +49,9 @@ func replyTime(hours float64) string {
 	case hours <= 1:
 		return "first reply within the hour"
 	case hours < 48:
-		return fmt.Sprintf("first reply in about %.0fh", hours)
+		return "first reply in about " + ftoa(hours, 0) + "h"
 	default:
-		return fmt.Sprintf("first reply in about %.0fd", hours/24)
+		return "first reply in about " + ftoa(hours/24, 0) + "d"
 	}
 }
 
@@ -69,7 +73,7 @@ func commitPace(raw RawMetrics) string {
 	case perWeek < 1.5:
 		return "1 default-branch commit a week"
 	default:
-		return fmt.Sprintf("%.0f default-branch commits a week", perWeek)
+		return ftoa(perWeek, 0) + " default-branch commits a week"
 	}
 }
 
@@ -85,7 +89,7 @@ func newcomerMerges(raw RawMetrics) string {
 	if total == 0 {
 		return "no newcomer PRs to judge"
 	}
-	return fmt.Sprintf("%d of %d newcomer PRs merged", raw.NewcomerPRsMerged, total)
+	return itoa(raw.NewcomerPRsMerged) + " of " + itoa(total) + " newcomer PRs merged"
 }
 
 func joinFacts(facts ...string) string {
@@ -106,8 +110,26 @@ func capitalize(s string) string {
 	return string(unicode.ToUpper(r)) + s[size:]
 }
 
+type evidence struct {
+	pushAgo string
+	merges  string
+	reply   string
+}
+
+func gatherEvidence(raw RawMetrics) evidence {
+	return evidence{
+		pushAgo: agoDays(raw.DaysSinceLastPush),
+		merges:  newcomerMerges(raw),
+		reply:   replyTime(raw.MedianIssueFirstResponseHours),
+	}
+}
+
 func maintainedMessage(grade string, raw RawMetrics) string {
-	facts := joinFacts("pushed "+agoDays(raw.DaysSinceLastPush), commitPace(raw), releaseNote(raw))
+	return maintainedMessageWith(grade, raw, gatherEvidence(raw))
+}
+
+func maintainedMessageWith(grade string, raw RawMetrics, ev evidence) string {
+	facts := joinFacts("pushed "+ev.pushAgo, commitPace(raw), releaseNote(raw))
 	switch grade {
 	case "A":
 		return capitalize(facts) + "."
@@ -128,6 +150,10 @@ func maintainedMessage(grade string, raw RawMetrics) string {
 const recentPushDays = 90
 
 func contributableMessage(grade string, raw RawMetrics) string {
+	return contributableMessageWith(grade, raw, gatherEvidence(raw))
+}
+
+func contributableMessageWith(grade string, raw RawMetrics, ev evidence) string {
 	stale := ""
 	if raw.StaleNewcomerOpenPRs > 0 {
 		stale = plural(raw.StaleNewcomerOpenPRs, "newcomer PR waiting over 30d", "newcomer PRs waiting over 30d")
@@ -136,7 +162,7 @@ func contributableMessage(grade string, raw RawMetrics) string {
 	if raw.HasContributing {
 		guide = "contributing guide present"
 	}
-	facts := joinFacts(newcomerMerges(raw), replyTime(raw.MedianIssueFirstResponseHours), stale, guide)
+	facts := joinFacts(ev.merges, ev.reply, stale, guide)
 	if raw.NewcomerPRsMerged+raw.NewcomerPRsClosedUnmerged == 0 {
 		return "Unproven: " + facts + ". Open an issue to test the waters before coding."
 	}
@@ -157,11 +183,11 @@ func contributableMessage(grade string, raw RawMetrics) string {
 func strong(grade string) bool { return grade == "A" || grade == "B" }
 
 func buildVerdict(maintained, contributable QuestionScore, gates []Gate, cats []CategoryScore, raw RawMetrics) string {
-	evidence := capitalize(joinFacts(
-		"last push "+agoDays(raw.DaysSinceLastPush),
-		newcomerMerges(raw),
-		replyTime(raw.MedianIssueFirstResponseHours),
-	)) + "."
+	return buildVerdictWith(maintained, contributable, gates, cats, gatherEvidence(raw))
+}
+
+func buildVerdictWith(maintained, contributable QuestionScore, gates []Gate, cats []CategoryScore, ev evidence) string {
+	evidence := capitalize(joinFacts("last push "+ev.pushAgo, ev.merges, ev.reply)) + "."
 
 	var lead string
 	switch {
