@@ -84,3 +84,14 @@ func TestWaitProgressReturnsNilOnClosedChannel(t *testing.T) {
 		t.Errorf("closed channel should yield nil, got %v", got)
 	}
 }
+
+func TestRefreshForcesRevalidation(t *testing.T) {
+	m := newTestModel()
+	if m.revalidate {
+		t.Fatal("first fetch should use the cache")
+	}
+	next, _ := m.Update(keyPress("r"))
+	if !next.(Model).revalidate {
+		t.Error("r should force revalidation on the next fetch")
+	}
+}

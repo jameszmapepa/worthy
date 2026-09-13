@@ -3,6 +3,8 @@ package tui
 import (
 	"strings"
 	"testing"
+
+	"github.com/jameszmapepa/worthy/internal/github"
 )
 
 func TestScorecardViewContent(t *testing.T) {
@@ -60,9 +62,21 @@ func TestBarColorThresholds(t *testing.T) {
 	}
 }
 
+func TestHeaderShowsLiveBudget(t *testing.T) {
+	raw := fixedRaw()
+	out := stripANSI(renderHeaderPanel("o", "r", raw, true, false, github.RateInfo{Remaining: 41, Limit: 60, Known: true}, 80, "", false))
+	if !strings.Contains(out, "API 41/60") {
+		t.Errorf("header should show the live budget, got:\n%s", out)
+	}
+	out = stripANSI(renderHeaderPanel("o", "r", raw, true, true, github.RateInfo{Remaining: 4870, Limit: 5000, Known: true}, 80, "", false))
+	if !strings.Contains(out, "API 4.9k/5.0k") {
+		t.Errorf("header should humanize the live budget, got:\n%s", out)
+	}
+}
+
 func TestHeaderShowsRateLimitMode(t *testing.T) {
 	raw := fixedRaw()
-	unauth := renderHeaderPanel("charmbracelet", "bubbletea", raw, true, false, 80, "", false)
+	unauth := renderHeaderPanel("charmbracelet", "bubbletea", raw, true, false, github.RateInfo{}, 80, "", false)
 	if !strings.Contains(unauth, "60") || !strings.Contains(unauth, "charmbracelet/bubbletea") {
 		t.Errorf("unauth header wrong:\n%s", unauth)
 	}
@@ -70,7 +84,7 @@ func TestHeaderShowsRateLimitMode(t *testing.T) {
 	if !strings.Contains(unauth, "API") {
 		t.Errorf("rate-limit badge should be labeled with API:\n%s", unauth)
 	}
-	auth := renderHeaderPanel("charmbracelet", "bubbletea", raw, true, true, 80, "", false)
+	auth := renderHeaderPanel("charmbracelet", "bubbletea", raw, true, true, github.RateInfo{}, 80, "", false)
 	if !strings.Contains(auth, "5,000") {
 		t.Errorf("auth header should show 5,000/hr:\n%s", auth)
 	}
@@ -80,7 +94,7 @@ func TestHeaderASCIIMode(t *testing.T) {
 	raw := fixedRaw()
 	raw.Language = "TypeScript"
 
-	ascii := renderHeaderPanel("o", "r", raw, true, false, 100, "", true)
+	ascii := renderHeaderPanel("o", "r", raw, true, false, github.RateInfo{}, 100, "", true)
 	if !strings.Contains(ascii, languageIcons["typescript"].tag) {
 		t.Errorf("ascii header should show the TS tag:\n%s", ascii)
 	}
@@ -88,7 +102,7 @@ func TestHeaderASCIIMode(t *testing.T) {
 		t.Errorf("ascii header must not contain the Nerd Font glyph:\n%s", ascii)
 	}
 
-	glyph := renderHeaderPanel("o", "r", raw, true, false, 100, "", false)
+	glyph := renderHeaderPanel("o", "r", raw, true, false, github.RateInfo{}, 100, "", false)
 	if !strings.Contains(glyph, languageIcons["typescript"].glyph) {
 		t.Errorf("default header should show the devicon glyph:\n%s", glyph)
 	}
@@ -99,7 +113,7 @@ func TestHeaderShowsMetaWhenLoaded(t *testing.T) {
 	raw.Description = "A delightful TUI framework"
 	raw.LicenseSPDX = "MIT"
 	raw.RepoAgeDays = 1200
-	out := renderHeaderPanel("charm", "bubbletea", raw, true, true, 100, "B", false)
+	out := renderHeaderPanel("charm", "bubbletea", raw, true, true, github.RateInfo{}, 100, "B", false)
 	for _, want := range []string{"delightful TUI", glyphStar, "MIT", "3.3y old"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("loaded header missing %q:\n%s", want, out)
@@ -110,7 +124,7 @@ func TestHeaderShowsMetaWhenLoaded(t *testing.T) {
 func TestHeaderHidesMetaWhenNotLoaded(t *testing.T) {
 	raw := fixedRaw()
 	raw.Description = "should not show yet"
-	out := renderHeaderPanel("charm", "bubbletea", raw, false, true, 100, "", false)
+	out := renderHeaderPanel("charm", "bubbletea", raw, false, true, github.RateInfo{}, 100, "", false)
 	if strings.Contains(out, "should not show yet") {
 		t.Errorf("header must not show description before load:\n%s", out)
 	}
@@ -121,7 +135,7 @@ func TestHeaderHidesMetaWhenNotLoaded(t *testing.T) {
 
 func TestHeaderShowsGradeWhenLoaded(t *testing.T) {
 	raw := fixedRaw()
-	out := stripANSI(renderHeaderPanel("o", "r", raw, true, false, 100, "A", false))
+	out := stripANSI(renderHeaderPanel("o", "r", raw, true, false, github.RateInfo{}, 100, "A", false))
 	if !strings.Contains(out, "Grade A") {
 		t.Errorf("loaded header should show the composite grade:\n%s", out)
 	}
@@ -129,7 +143,7 @@ func TestHeaderShowsGradeWhenLoaded(t *testing.T) {
 
 func TestHeaderOmitsGradeWhenNotLoaded(t *testing.T) {
 	raw := fixedRaw()
-	out := stripANSI(renderHeaderPanel("o", "r", raw, false, false, 100, "", false))
+	out := stripANSI(renderHeaderPanel("o", "r", raw, false, false, github.RateInfo{}, 100, "", false))
 	if strings.Contains(out, "Grade") {
 		t.Errorf("header must not show grade before load:\n%s", out)
 	}

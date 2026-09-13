@@ -1,6 +1,9 @@
 package main
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestRunArgValidation(t *testing.T) {
 	tests := []struct {
@@ -55,5 +58,21 @@ func TestAsciiFromEnv(t *testing.T) {
 		if asciiFromEnv() {
 			t.Errorf("WORTHY_ASCII=%q should NOT enable ascii mode", v)
 		}
+	}
+}
+
+func TestClientOptionsHonourNoCache(t *testing.T) {
+	if got := clientOptions(true); got != nil {
+		t.Errorf("--no-cache should yield no client options, got %d", len(got))
+	}
+	if got := clientOptions(false); len(got) != 1 {
+		t.Errorf("default should enable the cache, got %d options", len(got))
+	}
+}
+
+func TestNoCacheFlagIsAccepted(t *testing.T) {
+	err := run([]string{"--no-cache"})
+	if err == nil || !strings.Contains(err.Error(), "usage") {
+		t.Errorf("--no-cache alone should fail with usage, got %v", err)
 	}
 }

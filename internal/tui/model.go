@@ -66,6 +66,7 @@ type Model struct {
 	progress    chan tea.Msg
 	stages      []stageStatus
 	hasRepo     bool
+	revalidate  bool
 
 	report score.Report
 	raw    score.RawMetrics
@@ -128,6 +129,7 @@ func (m *Model) prepareFetch() {
 	m.stages = newStages()
 	m.progress = make(chan tea.Msg, progressBuffer)
 	_, m.fetchCancel = context.WithCancel(m.ctx)
+	m.revalidate = m.fetchGen > 1
 }
 
 // fetchCmd runs the collection and, in parallel, the first progress wait.
@@ -139,6 +141,10 @@ func (m Model) fetchCmd() tea.Cmd {
 // m.progress and returning the final resultMsg.
 func (m Model) collectCmd() tea.Cmd {
 	ctx, cancel := context.WithTimeout(m.ctx, fetchTimeout)
+	if m.revalidate {
+		// A manual refresh means "ask GitHub again", not "serve the cache".
+		ctx = github.ForceRevalidate(ctx)
+	}
 	client := m.client
 	owner, repo, now := m.owner, m.repo, m.now
 	gen, ch := m.fetchGen, m.progress

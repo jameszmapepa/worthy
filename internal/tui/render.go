@@ -16,7 +16,7 @@ func (m Model) render() string {
 	}
 	header := renderHeaderPanel(
 		m.owner, m.repo, m.raw,
-		m.state == stateLoaded || m.hasRepo, m.client.Authenticated(), m.width, grade, m.asciiIcons,
+		m.state == stateLoaded || m.hasRepo, m.client.Authenticated(), m.client.RateInfo(), m.width, grade, m.asciiIcons,
 	)
 
 	var body string

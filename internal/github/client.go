@@ -10,6 +10,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -51,6 +52,36 @@ type Client struct {
 	token      string
 	maxRetries int
 	retryWait  time.Duration
+	cache      *diskCache
+
+	rateMu sync.Mutex
+	rate   RateInfo
+}
+
+// RateInfo is the primary rate-limit budget as of the last real response.
+type RateInfo struct {
+	Remaining int
+	Limit     int
+	Known     bool
+}
+
+// RateInfo returns the budget reported by GitHub on the most recent request
+// that reached the network; Known is false until one has.
+func (c *Client) RateInfo() RateInfo {
+	c.rateMu.Lock()
+	defer c.rateMu.Unlock()
+	return c.rate
+}
+
+func (c *Client) recordRate(h http.Header) {
+	rem, err1 := strconv.Atoi(h.Get("X-RateLimit-Remaining"))
+	lim, err2 := strconv.Atoi(h.Get("X-RateLimit-Limit"))
+	if err1 != nil || err2 != nil {
+		return
+	}
+	c.rateMu.Lock()
+	c.rate = RateInfo{Remaining: rem, Limit: lim, Known: true}
+	c.rateMu.Unlock()
 }
 
 // Option configures a Client.
@@ -161,10 +192,41 @@ func (c *Client) getRaw(ctx context.Context, path string) ([]byte, error) {
 	}
 }
 
-// doGet executes a single GET. The Close error is intentionally discarded: the
-// read result is already captured, so a Close failure cannot change body or
-// readErr and is not actionable.
+// doGet executes a single GET, consulting the disk cache when configured: a
+// fresh entry is returned without any network call; a stale one is
+// revalidated with If-None-Match and reused on 304. Only 200 responses are
+// stored, so 202 "computing" and error replies are never served from cache.
 func (c *Client) doGet(ctx context.Context, path, accept string) (http.Header, []byte, int, error) {
+	var entry *cacheEntry
+	if c.cache != nil {
+		if e, ok := c.cache.load(path, accept); ok {
+			if c.cache.fresh(e) && !forced(ctx) {
+				return cachedHeader(e), e.Body, http.StatusOK, nil
+			}
+			entry = e
+		}
+	}
+
+	header, body, status, err := c.roundTrip(ctx, path, accept, entry)
+	switch {
+	case err != nil:
+		return nil, nil, 0, err
+	case status == http.StatusNotModified && entry != nil:
+		entry.FetchedAt = time.Now()
+		c.cache.store(path, accept, entry)
+		return cachedHeader(entry), entry.Body, http.StatusOK, nil
+	case status == http.StatusOK && c.cache != nil && header.Get("ETag") != "":
+		c.cache.store(path, accept, &cacheEntry{
+			ETag: header.Get("ETag"), Link: header.Get("Link"), FetchedAt: time.Now(), Body: body,
+		})
+	}
+	return header, body, status, nil
+}
+
+// roundTrip performs the HTTP exchange. The Close error is intentionally
+// discarded: the read result is already captured, so a Close failure cannot
+// change body or readErr and is not actionable.
+func (c *Client) roundTrip(ctx context.Context, path, accept string, entry *cacheEntry) (http.Header, []byte, int, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+path, nil)
 	if err != nil {
 		return nil, nil, 0, fmt.Errorf("build request for %s: %w", path, err)
@@ -174,6 +236,9 @@ func (c *Client) doGet(ctx context.Context, path, accept string) (http.Header, [
 	req.Header.Set("User-Agent", userAgent)
 	if c.token != "" {
 		req.Header.Set("Authorization", "Bearer "+c.token)
+	}
+	if entry != nil {
+		req.Header.Set("If-None-Match", entry.ETag)
 	}
 
 	resp, err := c.httpClient.Do(req)
@@ -185,6 +250,7 @@ func (c *Client) doGet(ctx context.Context, path, accept string) (http.Header, [
 	if readErr != nil {
 		return nil, nil, 0, fmt.Errorf("read body for %s: %w", path, readErr)
 	}
+	c.recordRate(resp.Header)
 	return resp.Header, body, resp.StatusCode, nil
 }
 
