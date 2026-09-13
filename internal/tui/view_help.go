@@ -1,41 +1,29 @@
 package tui
 
-import (
-	"strings"
+import "strings"
 
-	"charm.land/lipgloss/v2"
-)
+// wideHelpWidth is the text width at which all four help columns fit.
+const wideHelpWidth = 92
 
-func renderHelp(width int) string {
-	boxW := clampWidth(width-4, 30, 60)
-
-	rows := []struct{ key, desc string }{
-		{"← →  tab", "switch view (prev / next)"},
-		{"1-4", "jump to view"},
-		{"↑ ↓  j k", "move selection"},
-		{"enter", "drill down (expand)"},
-		{"esc", "collapse · quit when collapsed"},
-		{"r", "refresh (re-fetch repo)"},
-		{"?", "toggle this help"},
-		{"q / ctrl+c", "quit"},
-	}
+func (m Model) renderHelp() string {
+	boxW := clampWidth(m.width-4, 30, 100)
+	textW := panelTextWidth(boxW)
 
 	var b strings.Builder
 	b.WriteString(titleStyle.Render("Keybindings"))
 	b.WriteString("\n\n")
-	for _, r := range rows {
-		key := mutedStyle.Render(padRight(r.key, 12))
-		desc := labelStyle.Render(r.desc)
-		b.WriteString(key + "  " + desc + "\n")
+	groups := m.fullHelp()
+	h := helpModel(textW)
+	if textW >= wideHelpWidth {
+		b.WriteString(h.FullHelpView(groups))
+	} else {
+		// Narrow: two rows of two groups so no column is elided.
+		b.WriteString(h.FullHelpView(groups[:2]))
+		b.WriteString("\n\n")
+		b.WriteString(h.FullHelpView(groups[2:]))
 	}
+	b.WriteString("\n\n")
+	b.WriteString(mutedStyle.Render("esc also quits when nothing is expanded."))
 
-	return helpPanelStyle.Width(boxW).Render(strings.TrimRight(b.String(), "\n"))
-}
-
-func padRight(s string, width int) string {
-	n := lipgloss.Width(s)
-	if n >= width {
-		return s
-	}
-	return s + strings.Repeat(" ", width-n)
+	return helpPanelStyle.Width(boxW).Render(b.String())
 }

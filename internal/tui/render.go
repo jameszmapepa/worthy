@@ -131,7 +131,7 @@ func (m Model) renderError() string {
 
 func (m Model) renderActiveView() string {
 	if m.helpVisible {
-		return renderHelp(m.width)
+		return m.renderHelp()
 	}
 	switch m.view {
 	case 1:
@@ -157,22 +157,15 @@ func (m Model) renderFooter() string {
 	}
 	tabs := strings.Join(parts, " ")
 
-	var hint string
-	switch {
-	case m.helpVisible:
-		hint = "? close help · q quit"
-	case m.canSelect() && m.expanded:
-
-		hint = "esc collapse · ←→ switch view · r refresh · q quit"
-	case m.canSelect():
-		hint = "↑↓ select · enter drill · ←→ switch view · r refresh · ? help · q quit"
-	default:
-		hint = "←→ switch view · r refresh · ? help · q quit"
+	var keys string
+	if m.status != "" {
+		keys = lipgloss.NewStyle().Foreground(colorGreen).Render("✓ " + m.status)
+	} else {
+		keys = helpModel(m.width).ShortHelpView(m.shortHelp())
+		if m.height > 0 && m.viewport.TotalLineCount() > m.viewport.VisibleLineCount() {
+			keys += mutedStyle.Render(fmt.Sprintf(" · ↕ %.0f%%", m.viewport.ScrollPercent()*100))
+		}
 	}
-	if m.height > 0 && m.viewport.TotalLineCount() > m.viewport.VisibleLineCount() {
-		hint += fmt.Sprintf(" · ↕ %.0f%%", m.viewport.ScrollPercent()*100)
-	}
-	keys := mutedStyle.Render(hint)
 	// One line when it fits; otherwise tabs above hints, each clipped to width.
 	if lipgloss.Width(tabs)+4+lipgloss.Width(keys) <= m.width {
 		return tabs + "    " + keys

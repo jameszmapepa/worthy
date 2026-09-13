@@ -5,6 +5,7 @@ import (
 	"context"
 	"time"
 
+	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/spinner"
 	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
@@ -63,6 +64,11 @@ type Model struct {
 	spinner     spinner.Model
 
 	viewport viewport.Model
+	keys     keyMap
+	opener   func(url string) error
+
+	status    string
+	statusGen int
 
 	fetchGen    int
 	fetchCancel context.CancelFunc
@@ -102,6 +108,8 @@ func New(ctx context.Context, client *github.Client, owner, repo string, opts ..
 		state:     stateLoading,
 		spinner:   spinner.New(),
 		viewport:  viewport.New(),
+		keys:      defaultKeyMap(),
+		opener:    openInBrowser,
 		width:     80,
 		height:    0,
 		loadStart: time.Now(),
@@ -232,6 +240,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyPressMsg:
 		return m.handleKey(msg)
 
+	case statusMsg:
+		return m, m.setStatus(msg.text)
+
+	case statusExpiredMsg:
+		if msg.gen == m.statusGen {
+			m.status = ""
+		}
+		return m, nil
+
 	case spinner.TickMsg:
 		var cmd tea.Cmd
 		m.spinner, cmd = m.spinner.Update(msg)
@@ -241,13 +258,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
-	switch msg.String() {
-	case "q", "ctrl+c":
-
+	k := m.keymap()
+	switch {
+	case key.Matches(msg, k.Quit):
 		m.cancel()
 		return m, tea.Quit
-	case "esc":
-
+	case key.Matches(msg, k.Back):
 		if m.helpVisible {
 			m.helpVisible = false
 			return m, nil
@@ -258,65 +274,78 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		}
 		m.cancel()
 		return m, tea.Quit
-	case "?":
-
+	case key.Matches(msg, k.Help):
 		m.helpVisible = !m.helpVisible
 		return m, nil
-	case "tab", "right", "l":
+	case key.Matches(msg, k.Next):
 		m.view = (m.view + 1) % viewCount
 		m.resetSelection()
 		return m, nil
-	case "shift+tab", "left", "h":
+	case key.Matches(msg, k.Prev):
 		m.view = (m.view - 1 + viewCount) % viewCount
 		m.resetSelection()
 		return m, nil
-	case "1":
-		m.view = 0
+	case key.Matches(msg, k.Jump):
+		m.view = int(msg.String()[0] - '1')
 		m.resetSelection()
 		return m, nil
-	case "2":
-		m.view = 1
-		m.resetSelection()
-		return m, nil
-	case "3":
-		m.view = 2
-		m.resetSelection()
-		return m, nil
-	case "4":
-		m.view = 3
-		m.resetSelection()
-		return m, nil
-	case "r":
+	case key.Matches(msg, k.Refresh):
 		m.prepareFetch()
 		return m, tea.Batch(m.spinner.Tick, m.fetchCmd())
-	case "j", "down":
+	case key.Matches(msg, k.Down):
 		if m.canSelect() {
 			m.moveSelection(1)
 		} else {
 			m.scroll(func() { m.viewport.ScrollDown(1) })
 		}
 		return m, nil
-	case "k", "up":
+	case key.Matches(msg, k.Up):
 		if m.canSelect() {
 			m.moveSelection(-1)
 		} else {
 			m.scroll(func() { m.viewport.ScrollUp(1) })
 		}
 		return m, nil
-	case "pgdown", "ctrl+d", "space":
+	case key.Matches(msg, k.Top):
+		if m.canSelect() {
+			m.moveSelection(-m.selected)
+		} else {
+			m.scroll(func() { m.viewport.GotoTop() })
+		}
+		return m, nil
+	case key.Matches(msg, k.Bottom):
+		if m.canSelect() {
+			m.moveSelection(m.currentSelectableCount())
+		} else {
+			m.scroll(func() { m.viewport.GotoBottom() })
+		}
+		return m, nil
+	case key.Matches(msg, k.PageDown):
 		m.scroll(m.viewport.HalfPageDown)
 		return m, nil
-	case "pgup", "ctrl+u":
+	case key.Matches(msg, k.PageUp):
 		m.scroll(m.viewport.HalfPageUp)
 		return m, nil
-	case "enter":
+	case key.Matches(msg, k.Enter):
 		if m.canSelect() {
 			m.expanded = true
 			m.syncViewport(true)
 		}
 		return m, nil
+	case key.Matches(msg, k.Open):
+		return m, m.openCmd()
+	case key.Matches(msg, k.Copy):
+		return m, tea.Batch(m.copyCmd(), m.setStatus("Copied summary to clipboard"))
 	}
 	return m, nil
+}
+
+// keymap returns the bindings, defaulting for a zero-value Model.
+func (m Model) keymap() keyMap {
+	if len(m.keys.Quit.Keys()) == 0 {
+		return defaultKeyMap()
+	}
+	return m.keys
 }
 
 // scroll applies a manual viewport movement against up-to-date content.
