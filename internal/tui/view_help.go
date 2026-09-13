@@ -6,11 +6,6 @@ import (
 	"charm.land/lipgloss/v2"
 )
 
-var helpPanelStyle = lipgloss.NewStyle().
-	Border(lipgloss.RoundedBorder()).
-	BorderForeground(colorAccent).
-	Padding(0, 2)
-
 func renderHelp(width int) string {
 	boxW := clampWidth(width-4, 30, 60)
 

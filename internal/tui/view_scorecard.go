@@ -13,27 +13,6 @@ const scorecardLabelWidth = 22
 
 const scorecardBarWidthOverhead = 44
 
-var panelStyle = lipgloss.NewStyle().
-	Border(lipgloss.RoundedBorder()).
-	BorderForeground(colorBorder).
-	Padding(0, 1)
-
-var heroStyle = lipgloss.NewStyle().
-	Border(lipgloss.ThickBorder()).
-	BorderForeground(colorAccent).
-	Padding(0, 2)
-
-var (
-	selectedMarkerStyle = lipgloss.NewStyle().Foreground(colorAccent).Bold(true)
-	selectedLabelStyle  = lipgloss.NewStyle().Foreground(colorAccent).Bold(true)
-)
-
-var detailStyle = lipgloss.NewStyle().
-	MarginLeft(2).
-	Border(lipgloss.NormalBorder(), false, false, false, true).
-	BorderForeground(colorAccent).
-	PaddingLeft(1)
-
 func renderScorecard(r score.Report, width, selected int, expanded bool) string {
 	var b strings.Builder
 
@@ -248,7 +227,7 @@ func renderGateBadge(g score.Gate) string {
 		text += fmt.Sprintf(" · caps %.0f", *g.CapTo)
 	}
 	return lipgloss.NewStyle().
-		Foreground(colorBackground).
+		Foreground(colorBadgeInk).
 		Background(c).
 		Bold(true).
 		Padding(0, 1).

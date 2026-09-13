@@ -109,9 +109,10 @@ func New(ctx context.Context, client *github.Client, owner, repo string, opts ..
 	return m
 }
 
-// Init starts the spinner and kicks off the first fetch.
+// Init starts the spinner, asks the terminal for its background colour so
+// the palette can match it, and kicks off the first fetch.
 func (m Model) Init() tea.Cmd {
-	return tea.Batch(m.spinner.Tick, m.fetchCmd())
+	return tea.Batch(m.spinner.Tick, tea.RequestBackgroundColor, m.fetchCmd())
 }
 
 // prepareFetch cancels any in-flight fetch and sets up the state for a new
@@ -188,9 +189,12 @@ func waitProgress(ch <-chan tea.Msg) tea.Cmd {
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
-
 		m.width = msg.Width
 		m.height = msg.Height
+		return m, nil
+
+	case tea.BackgroundColorMsg:
+		setTheme(msg.IsDark())
 		return m, nil
 
 	case progressMsg:

@@ -17,11 +17,6 @@ const (
 	glyphWatcher = "◉"
 )
 
-var headerPanelStyle = lipgloss.NewStyle().
-	Border(lipgloss.RoundedBorder()).
-	BorderForeground(colorBorder).
-	Padding(0, 1)
-
 func renderHeaderPanel(owner, repo string, raw score.RawMetrics, loaded, authenticated bool, rate github.RateInfo, width int, grade string, ascii bool) string {
 	boxW := clampWidth(width-2, 24, 200)
 	// Style.Width covers border and padding too: 2 border + 2 padding columns.
