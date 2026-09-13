@@ -11,9 +11,7 @@ import (
 	"time"
 )
 
-// DefaultCacheTTL is how long a cached response is served without contacting
-// GitHub. After that the entry is revalidated with If-None-Match; a 304 reuses
-// the stored body and, when authenticated, costs no rate limit.
+// DefaultCacheTTL is how long a cached response is served before revalidation.
 const DefaultCacheTTL = time.Hour
 
 type cacheEntry struct {
@@ -37,16 +35,14 @@ func DefaultCacheDir() (string, error) {
 	return filepath.Join(base, "worthy"), nil
 }
 
-// WithCache stores 200 responses under dir and serves them for ttl before
-// revalidating with the stored ETag. A zero or negative ttl always revalidates.
+// WithCache stores 200 responses under dir and serves them for ttl before revalidating.
 func WithCache(dir string, ttl time.Duration) Option {
 	return func(c *Client) { c.cache = &diskCache{dir: dir, ttl: ttl} }
 }
 
 type forceRevalidateKey struct{}
 
-// ForceRevalidate returns a context whose requests ignore cache freshness and
-// always ask GitHub, still sending If-None-Match so unchanged data is cheap.
+// ForceRevalidate returns a context whose requests ignore cache freshness.
 func ForceRevalidate(ctx context.Context) context.Context {
 	return context.WithValue(ctx, forceRevalidateKey{}, true)
 }
@@ -62,7 +58,7 @@ func (d *diskCache) file(path, accept string) string {
 }
 
 func (d *diskCache) load(path, accept string) (*cacheEntry, bool) {
-	b, err := os.ReadFile(d.file(path, accept)) //nolint:gosec // path is cache dir + sha256 hex
+	b, err := os.ReadFile(d.file(path, accept)) //nolint:gosec
 	if err != nil {
 		return nil, false
 	}
@@ -73,8 +69,6 @@ func (d *diskCache) load(path, accept string) (*cacheEntry, bool) {
 	return &e, true
 }
 
-// store writes atomically (temp file + rename) so a concurrent reader never
-// sees a partial entry. Failures are ignored: the cache is an optimisation.
 func (d *diskCache) store(path, accept string, e *cacheEntry) {
 	if err := os.MkdirAll(d.dir, 0o700); err != nil {
 		return
@@ -91,8 +85,7 @@ func (d *diskCache) store(path, accept string, e *cacheEntry) {
 	_, werr := tmp.Write(b)
 	cerr := tmp.Close()
 	if werr != nil || cerr != nil || os.Chmod(tmp.Name(), 0o600) != nil || os.Rename(tmp.Name(), dst) != nil {
-		// Best effort: a leftover temp file is harmless and swept next store.
-		_ = os.Remove(tmp.Name()) //nolint:errcheck // nothing useful to do on failure
+		_ = os.Remove(tmp.Name()) //nolint:errcheck
 	}
 }
 

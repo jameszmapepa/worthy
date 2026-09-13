@@ -51,7 +51,6 @@ func (m *Model) applyProgress(p metrics.Progress) {
 	}
 }
 
-// stagesFinished counts stages that reached a terminal state.
 func (m Model) stagesFinished() int {
 	n := 0
 	for _, s := range m.stages {

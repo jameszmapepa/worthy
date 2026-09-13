@@ -39,8 +39,6 @@ type progressMsg struct {
 	p   metrics.Progress
 }
 
-// progressBuffer bounds the per-fetch event channel; a full fetch emits
-// roughly two events per stage plus retries.
 const progressBuffer = 64
 
 // Model is the Bubble Tea model for the worthy TUI.
@@ -121,15 +119,11 @@ func New(ctx context.Context, client *github.Client, owner, repo string, opts ..
 	return m
 }
 
-// Init starts the spinner, asks the terminal for its background colour so
-// the palette can match it, and kicks off the first fetch.
+// Init starts the spinner, the background-colour request and the first fetch.
 func (m Model) Init() tea.Cmd {
 	return tea.Batch(m.spinner.Tick, tea.RequestBackgroundColor, m.fetchCmd())
 }
 
-// prepareFetch cancels any in-flight fetch and sets up the state for a new
-// one; fetchCmd then starts it. Split so Init (value receiver) can start the
-// fetch New prepared.
 func (m *Model) prepareFetch() {
 	if m.fetchCancel != nil {
 		m.fetchCancel()
@@ -145,17 +139,13 @@ func (m *Model) prepareFetch() {
 	m.revalidate = m.fetchGen > 1
 }
 
-// fetchCmd runs the collection and, in parallel, the first progress wait.
 func (m Model) fetchCmd() tea.Cmd {
 	return tea.Batch(m.collectCmd(), waitProgress(m.progress))
 }
 
-// collectCmd runs metrics.Collect off the event loop, streaming progress into
-// m.progress and returning the final resultMsg.
 func (m Model) collectCmd() tea.Cmd {
 	ctx, cancel := context.WithTimeout(m.ctx, fetchTimeout)
 	if m.revalidate {
-		// A manual refresh means "ask GitHub again", not "serve the cache".
 		ctx = github.ForceRevalidate(ctx)
 	}
 	client := m.client
@@ -165,8 +155,6 @@ func (m Model) collectCmd() tea.Cmd {
 	return func() tea.Msg {
 		defer cancel()
 		go func() {
-			// Tie this fetch's timeout to the per-fetch cancel so pressing r
-			// aborts the previous collection.
 			<-ctx.Done()
 			parentCancel()
 		}()
@@ -185,8 +173,6 @@ func (m Model) collectCmd() tea.Cmd {
 	}
 }
 
-// waitProgress delivers the next progress event; it returns nil once the
-// channel is closed at the end of a fetch.
 func waitProgress(ch <-chan tea.Msg) tea.Cmd {
 	return func() tea.Msg {
 		msg, ok := <-ch
@@ -340,7 +326,6 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// keymap returns the bindings, defaulting for a zero-value Model.
 func (m Model) keymap() keyMap {
 	if len(m.keys.Quit.Keys()) == 0 {
 		return defaultKeyMap()
@@ -348,7 +333,6 @@ func (m Model) keymap() keyMap {
 	return m.keys
 }
 
-// scroll applies a manual viewport movement against up-to-date content.
 func (m *Model) scroll(move func()) {
 	m.syncViewport(false)
 	move()
@@ -399,10 +383,7 @@ func (m *Model) resetSelection() {
 	m.syncViewport(true)
 }
 
-// View renders the current state. Cell-motion mouse mode is on so the wheel
-// scrolls the body; terminals still allow native text selection with shift.
-// The window title names the repo, and while fetching the terminal's own
-// progress indicator (taskbar or tab, where supported) tracks the stages.
+// View renders the current state.
 func (m Model) View() tea.View {
 	v := tea.NewView(m.render())
 	v.MouseMode = tea.MouseModeCellMotion

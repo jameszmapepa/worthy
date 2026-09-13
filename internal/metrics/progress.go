@@ -5,8 +5,7 @@ import "github.com/jameszmapepa/worthy/internal/score"
 // StageState is the lifecycle of one collection stage.
 type StageState int
 
-// Stage states, in lifecycle order; Degraded means the stage finished but
-// its metric fell back to neutral.
+// Stage states, in lifecycle order.
 const (
 	StagePending StageState = iota
 	StageRunning
@@ -38,9 +37,7 @@ var Stages = []string{
 	StageNewcomerLabels,
 }
 
-// Progress is one collection event. Repo is set only on the repository
-// stage's StageDone event and carries the header metadata (stars, description,
-// license, age) so a UI can render it before the remaining stages finish.
+// Progress is one collection event.
 type Progress struct {
 	Stage   string
 	State   StageState
@@ -48,8 +45,7 @@ type Progress struct {
 	Repo    *score.RawMetrics
 }
 
-// ProgressFunc receives Progress events. Stages run concurrently, so fn may be
-// called from several goroutines at once.
+// ProgressFunc receives Progress events.
 type ProgressFunc func(Progress)
 
 // Option configures Collect.

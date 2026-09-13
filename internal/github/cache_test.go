@@ -9,8 +9,6 @@ import (
 	"time"
 )
 
-// etagServer serves body with an ETag, answers 304 to a matching
-// If-None-Match, and counts every request that reaches it.
 func etagServer(t *testing.T, body string) (*httptest.Server, *atomic.Int32) {
 	t.Helper()
 	var hits atomic.Int32
@@ -51,7 +49,7 @@ func TestCache_FreshEntryServedWithoutNetwork(t *testing.T) {
 
 func TestCache_StaleEntryRevalidatesAndReusesBodyOn304(t *testing.T) {
 	srv, hits := etagServer(t, `{"n":2}`)
-	c := newTestClient(srv, WithCache(t.TempDir(), 0)) // ttl 0: always revalidate
+	c := newTestClient(srv, WithCache(t.TempDir(), 0))
 
 	var out struct{ N int }
 	if err := c.get(context.Background(), "/thing", &out); err != nil {
@@ -145,7 +143,6 @@ func TestRateInfo_TracksHeaders(t *testing.T) {
 	if !got.Known || got.Remaining != 41 || got.Limit != 60 {
 		t.Errorf("rate info = %+v", got)
 	}
-	// A cache hit must not disturb the last known budget.
 	if err := c.get(context.Background(), "/thing", nil); err != nil {
 		t.Fatal(err)
 	}

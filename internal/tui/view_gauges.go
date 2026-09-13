@@ -15,15 +15,10 @@ const narrowTerminalWidth = 70
 
 const gaugeDetailBarWidthOverhead = 28
 
-// gaugePanelOverhead is every column of a gauge panel except the bar:
-// border+padding(4) marker(2) label(12) gap value(5) grade(2) gaps(2).
 const gaugePanelOverhead = 4 + 2 + gaugeLabelWidth + 1 + 1 + 5 + 2
 
-// trendPanelOverhead is the Activity panel's border and padding.
 const trendPanelOverhead = 4
 
-// gaugeDetailOverhead is every column of a detail line except bar and raw:
-// indent(4) label(22) gap bar gap value(5) grade(2) gap(2).
 const gaugeDetailOverhead = detailIndent + 22 + 1 + 1 + 5 + 2 + 2
 
 func renderGauges(r score.Report, raw score.RawMetrics, width, selected int, expanded bool) string {
@@ -32,7 +27,6 @@ func renderGauges(r score.Report, raw score.RawMetrics, width, selected int, exp
 	head := titleStyle.Render("Overall grade ") + grade +
 		mutedStyle.Render(fmt.Sprintf("  %.1f / 100", r.AdjustedComposite))
 
-	// Side by side, each panel gets half the width minus the 2-column gap.
 	panelBudget := width
 	if width >= narrowTerminalWidth {
 		panelBudget = (width - 2) / 2

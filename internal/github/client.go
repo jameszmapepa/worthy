@@ -65,16 +65,13 @@ type RateInfo struct {
 	Known     bool
 }
 
-// RateInfo returns the budget reported by GitHub on the most recent request
-// that reached the network; Known is false until one has.
+// RateInfo returns the core budget GitHub reported on the most recent network response.
 func (c *Client) RateInfo() RateInfo {
 	c.rateMu.Lock()
 	defer c.rateMu.Unlock()
 	return c.rate
 }
 
-// recordRate keeps the core budget only: search and other resources report
-// their own, much smaller, limits on the same headers.
 func (c *Client) recordRate(h http.Header) {
 	if res := h.Get("X-RateLimit-Resource"); res != "" && res != "core" {
 		return
@@ -197,10 +194,6 @@ func (c *Client) getRaw(ctx context.Context, path string) ([]byte, error) {
 	}
 }
 
-// doGet executes a single GET, consulting the disk cache when configured: a
-// fresh entry is returned without any network call; a stale one is
-// revalidated with If-None-Match and reused on 304. Only 200 responses are
-// stored, so 202 "computing" and error replies are never served from cache.
 func (c *Client) doGet(ctx context.Context, path, accept string) (http.Header, []byte, int, error) {
 	var entry *cacheEntry
 	if c.cache != nil {
@@ -228,9 +221,6 @@ func (c *Client) doGet(ctx context.Context, path, accept string) (http.Header, [
 	return header, body, status, nil
 }
 
-// roundTrip performs the HTTP exchange. The Close error is intentionally
-// discarded: the read result is already captured, so a Close failure cannot
-// change body or readErr and is not actionable.
 func (c *Client) roundTrip(ctx context.Context, path, accept string, entry *cacheEntry) (http.Header, []byte, int, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+path, nil)
 	if err != nil {

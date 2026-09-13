@@ -11,21 +11,16 @@ import (
 	"github.com/jameszmapepa/worthy/internal/github"
 )
 
-// footerGap is the blank lines between body and footer.
 const footerGap = 2
 
-// selectionMarker is the glyph renderSubLine and renderGauge put in front of
-// the selected row; syncViewport finds it to keep that row on screen.
 const selectionMarker = "▸"
 
-// detailBlockLines is how many lines a drill-down adds under its row.
 const detailBlockLines = 7
 
 func (m Model) render() string {
 	header := m.renderHeader()
 	footer := m.renderFooter()
 	if m.height <= 0 {
-		// Unknown height (tests, non-TTY): emit everything.
 		return header + "\n\n" + m.renderBody() + "\n\n" + footer
 	}
 	m.syncViewport(false)
@@ -54,10 +49,6 @@ func (m Model) renderBody() string {
 	}
 }
 
-// syncViewport sizes the body viewport to the space left by header and
-// footer and loads the current body. With follow set it also scrolls so the
-// selected row (and its drill-down) is on screen; manual scrolling passes
-// false so the user's position is kept.
 func (m *Model) syncViewport(follow bool) {
 	if m.height <= 0 {
 		return
@@ -73,7 +64,6 @@ func (m *Model) syncViewport(follow bool) {
 		return
 	}
 	if m.selected == 0 && !m.expanded {
-		// First row: show the page from the top so the headline stays visible.
 		m.viewport.GotoTop()
 		return
 	}
@@ -171,7 +161,6 @@ func (m Model) renderFooter() string {
 			keys += mutedStyle.Render(fmt.Sprintf(" · ↕ %.0f%%", m.viewport.ScrollPercent()*100))
 		}
 	}
-	// One line when it fits; otherwise tabs above hints, each clipped to width.
 	if lipgloss.Width(tabs)+4+lipgloss.Width(keys) <= m.width {
 		return tabs + "    " + keys
 	}

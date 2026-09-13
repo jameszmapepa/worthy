@@ -10,8 +10,6 @@ import (
 	"github.com/jameszmapepa/worthy/internal/metrics"
 )
 
-// TestNoLineOverflows renders every view, with and without a drill-down, at
-// a range of terminal widths and fails on any line wider than the terminal.
 func TestNoLineOverflows(t *testing.T) {
 	widths := []int{50, 60, 70, 80, 100, 120, 160}
 	for _, w := range widths {

@@ -9,8 +9,7 @@ import (
 	"github.com/jameszmapepa/worthy/internal/score"
 )
 
-// Document is the JSON shape written by JSON. Field names are stable: treat
-// additions as compatible and renames as breaking.
+// Document is the JSON shape written by JSON.
 type Document struct {
 	Repository string     `json:"repository"`
 	URL        string     `json:"url"`

@@ -15,9 +15,7 @@ type PlainOptions struct {
 	Rate          github.RateInfo
 }
 
-// RenderPlain renders the scorecard and explanation as one static page for
-// pipes, CI logs and the --plain flag. Styling is left in; the caller decides
-// whether to strip it based on the destination.
+// RenderPlain renders the scorecard and explanation as one static page.
 func RenderPlain(owner, repo string, r score.Report, raw score.RawMetrics, opts PlainOptions) string {
 	width := opts.Width
 	if width <= 0 {

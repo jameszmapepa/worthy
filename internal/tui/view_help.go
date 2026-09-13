@@ -2,7 +2,6 @@ package tui
 
 import "strings"
 
-// wideHelpWidth is the text width at which all four help columns fit.
 const wideHelpWidth = 92
 
 func (m Model) renderHelp() string {
@@ -17,7 +16,6 @@ func (m Model) renderHelp() string {
 	if textW >= wideHelpWidth {
 		b.WriteString(h.FullHelpView(groups))
 	} else {
-		// Narrow: two rows of two groups so no column is elided.
 		b.WriteString(h.FullHelpView(groups[:2]))
 		b.WriteString("\n\n")
 		b.WriteString(h.FullHelpView(groups[2:]))

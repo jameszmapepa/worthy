@@ -51,8 +51,6 @@ func Collect(ctx context.Context, c *github.Client, owner, repo string, now time
 		labels   newcomerLabelResult
 	)
 
-	// stage wraps a worker so its lifecycle (and any 202 retries inside it) is
-	// reported through the progress callback.
 	stage := func(name string, partial *string, fn func(context.Context) error) func() error {
 		return func() error {
 			o.emit(Progress{Stage: name, State: StageRunning})

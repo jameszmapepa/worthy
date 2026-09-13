@@ -58,7 +58,7 @@ func TestViewportPageKeysAndIndicator(t *testing.T) {
 	if m.viewport.YOffset() != 0 {
 		t.Errorf("pgup should scroll back, offset = %d", m.viewport.YOffset())
 	}
-	m.view = 3 // explain: no selection, so j/k scroll
+	m.view = 3
 	m.syncViewport(true)
 	before := m.viewport.YOffset()
 	m = press(m, "j")

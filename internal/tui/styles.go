@@ -8,8 +8,6 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
-// palette is the full colour set for one background mode. Every style below
-// is rebuilt from it by applyPalette, so a theme switch is one assignment.
 type palette struct {
 	green, amber, red                      color.Color
 	fg, muted, accent                      color.Color
@@ -18,7 +16,6 @@ type palette struct {
 	star, fork, watcher                    color.Color
 }
 
-// darkPalette is Dracula.
 var darkPalette = palette{
 	green: lipgloss.Color("#50fa7b"), amber: lipgloss.Color("#f1fa8c"), red: lipgloss.Color("#ff5555"),
 	fg: lipgloss.Color("#f8f8f2"), muted: lipgloss.Color("#6272a4"), accent: lipgloss.Color("#bd93f9"),
@@ -27,8 +24,6 @@ var darkPalette = palette{
 	star: lipgloss.Color("#f1fa8c"), fork: lipgloss.Color("#bd93f9"), watcher: lipgloss.Color("#8be9fd"),
 }
 
-// lightPalette keeps the same hue roles at contrasts that read on a light
-// background (Dracula's yellows and cyans wash out on white).
 var lightPalette = palette{
 	green: lipgloss.Color("#1f8a3b"), amber: lipgloss.Color("#b26a00"), red: lipgloss.Color("#c62828"),
 	fg: lipgloss.Color("#282a36"), muted: lipgloss.Color("#6b6f85"), accent: lipgloss.Color("#6f42c1"),
@@ -37,8 +32,6 @@ var lightPalette = palette{
 	star: lipgloss.Color("#b26a00"), fork: lipgloss.Color("#6f42c1"), watcher: lipgloss.Color("#0e7490"),
 }
 
-// colorBadgeInk is the text colour on filled gate badges; the badge fills are
-// bright in both palettes, so the ink stays dark.
 var colorBadgeInk = lipgloss.Color("#282a36")
 
 var (
@@ -81,10 +74,6 @@ const gradientSteps = 24
 
 var scoreGradient []color.Color
 
-// gradientSGR holds the ready-made colour escape per gradient step and
-// trackSGR the empty-track colour, so renderBar writes bytes instead of
-// building a lipgloss style per run. Bubble Tea's renderer still downsamples
-// these for the terminal's colour profile.
 var (
 	gradientSGR []string
 	trackSGR    string
@@ -94,9 +83,6 @@ var currentPaletteDark = true
 
 func init() { applyPalette(darkPalette, true) }
 
-// applyPalette rebuilds every package-level colour and style from p. Bubble
-// Tea calls Update and View on one goroutine, so the swap is race-free at
-// runtime; tests that switch palettes must restore the dark one.
 func applyPalette(p palette, dark bool) {
 	currentPaletteDark = dark
 	colorGreen, colorAmber, colorRed = p.green, p.amber, p.red
@@ -147,7 +133,6 @@ func applyPalette(p palette, dark bool) {
 	trackSGR = ansi.Style{}.ForegroundColor(colorTrackEmpty).String()
 }
 
-// setTheme selects the palette for a dark or light terminal background.
 func setTheme(dark bool) {
 	if dark {
 		applyPalette(darkPalette, true)

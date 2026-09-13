@@ -5,8 +5,6 @@ import (
 	"charm.land/bubbles/v2/key"
 )
 
-// keyMap is the single source of truth for bindings: Update matches against
-// it and both the footer and the help overlay are generated from it.
 type keyMap struct {
 	Next     key.Binding
 	Prev     key.Binding
@@ -47,7 +45,6 @@ func defaultKeyMap() keyMap {
 	}
 }
 
-// shortHelp is the footer hint set for the current state.
 func (m Model) shortHelp() []key.Binding {
 	k := m.keymap()
 	switch {
@@ -64,7 +61,6 @@ func (m Model) shortHelp() []key.Binding {
 	}
 }
 
-// fullHelp is the overlay layout: one column per group.
 func (m Model) fullHelp() [][]key.Binding {
 	k := m.keymap()
 	return [][]key.Binding{
@@ -75,7 +71,6 @@ func (m Model) fullHelp() [][]key.Binding {
 	}
 }
 
-// helpModel builds a help renderer in the current palette.
 func helpModel(width int) help.Model {
 	h := help.New()
 	h.SetWidth(width)

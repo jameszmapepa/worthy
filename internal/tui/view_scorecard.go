@@ -100,16 +100,10 @@ func renderHero(r score.Report, width int) string {
 	return heroStyle.Render(body)
 }
 
-// panelTextWidth is the content width inside a panel of outer width boxW:
-// Style.Width counts the 2 border and 2 padding columns.
 func panelTextWidth(boxW int) int { return boxW - 4 }
 
-// subLineOverhead is every column of a sub-score line except the bar and the
-// raw text: marker(2) label(22) gap bar gap value(5) grade(2) gap(2).
 const subLineOverhead = 2 + scorecardLabelWidth + 1 + 1 + 5 + 2 + 2
 
-// rawBudgetFor returns how many columns remain for the raw-metric text; below
-// minRawBudget the column is dropped rather than squeezed.
 func rawBudgetFor(textW, barWidth int) int {
 	n := textW - subLineOverhead - barWidth
 	if n < minRawBudget {
@@ -166,7 +160,6 @@ func renderSubLine(s score.SubScore, barWidth, rawBudget int, sel bool) string {
 	return line
 }
 
-// detailIndent is detailStyle's margin, border and padding.
 const detailIndent = 4
 
 func renderDetail(s score.SubScore, cat score.CategoryScore, width int) string {
@@ -207,13 +200,10 @@ func renderGates(gates []score.Gate, width int) string {
 	return b.String()
 }
 
-// renderGateLine puts the badge beside its detail, wrapping the detail to the
-// remaining width so long explanations never run past the terminal edge.
 func renderGateLine(g score.Gate, width int) string {
 	badge := renderGateBadge(g)
 	detailW := width - lipgloss.Width(badge) - 2
 	if detailW < 16 {
-		// Too narrow to sit side by side: stack instead.
 		return badge + "\n" + mutedStyle.Width(max(width, 16)).Render(g.Detail)
 	}
 	detail := mutedStyle.Width(detailW).Render(g.Detail)

@@ -39,8 +39,6 @@ func barColor(value float64) color.Color {
 	}
 }
 
-// renderBar draws a gradient bar of width cells filled to value percent.
-// Runs of equal colour share one escape sequence; the result is plain ANSI.
 func renderBar(value float64, width int) string {
 	if width < 1 {
 		width = 1

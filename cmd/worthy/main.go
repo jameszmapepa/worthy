@@ -92,7 +92,6 @@ func parseArgs(args []string) (options, error) {
 	return o, nil
 }
 
-// selectMode picks the output: explicit flags win, then a pipe gets plain text.
 func selectMode(o options, stdoutIsTTY bool) mode {
 	switch {
 	case o.json:
@@ -147,8 +146,6 @@ func run(args []string, stdout, stderr io.Writer, stdoutIsTTY bool) error {
 		page := tui.RenderPlain(owner, repo, r, raw, tui.PlainOptions{
 			Width: width, ASCIIIcons: o.ascii, Authenticated: client.Authenticated(), Rate: client.RateInfo(),
 		})
-		// The colour-profile writer downsamples for the terminal and strips
-		// styling entirely for pipes and NO_COLOR.
 		_, err = colorprofile.NewWriter(stdout, os.Environ()).WriteString(page)
 		return err
 	}
@@ -156,8 +153,6 @@ func run(args []string, stdout, stderr io.Writer, stdoutIsTTY bool) error {
 
 const collectTimeout = 60 * time.Second
 
-// collect scores the repo without a UI, narrating stages on stderr only when
-// stderr is a terminal so logs and pipes stay clean.
 func collect(ctx context.Context, client *github.Client, owner, repo string, stderr io.Writer) (score.Report, score.RawMetrics, error) {
 	ctx, cancel := context.WithTimeout(ctx, collectTimeout)
 	defer cancel()
@@ -165,7 +160,7 @@ func collect(ctx context.Context, client *github.Client, owner, repo string, std
 	if f, ok := stderr.(*os.File); ok && term.IsTerminal(f.Fd()) {
 		opts = append(opts, metrics.WithProgress(func(p metrics.Progress) {
 			if p.State == metrics.StageRetrying {
-				_, _ = fmt.Fprintf(stderr, "worthy: %s: GitHub is computing stats, retry %d\n", p.Stage, p.Attempt) //nolint:errcheck // narration only
+				_, _ = fmt.Fprintf(stderr, "worthy: %s: GitHub is computing stats, retry %d\n", p.Stage, p.Attempt) //nolint:errcheck
 			}
 		}))
 	}
@@ -180,8 +175,6 @@ func collect(ctx context.Context, client *github.Client, owner, repo string, std
 	return score.Evaluate(raw), raw, nil
 }
 
-// clientOptions enables the response cache unless disabled; a missing user
-// cache dir silently runs uncached.
 func clientOptions(noCache bool) []github.Option {
 	if noCache {
 		return nil

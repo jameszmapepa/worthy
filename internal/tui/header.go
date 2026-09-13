@@ -19,7 +19,6 @@ const (
 
 func renderHeaderPanel(owner, repo string, raw score.RawMetrics, loaded, authenticated bool, rate github.RateInfo, width int, grade string, ascii bool) string {
 	boxW := clampWidth(width-2, 24, 200)
-	// Style.Width covers border and padding too: 2 border + 2 padding columns.
 	textW := boxW - 4
 
 	identity := titleStyle.Render(owner + "/" + repo)
@@ -62,8 +61,6 @@ func metaRow(raw score.RawMetrics, ascii bool) string {
 	return strings.Join(parts, mutedStyle.Render("   "))
 }
 
-// rateLimitBadge shows the live budget ("API 41/60") once a response has
-// reported it, and the static ceiling before that.
 func rateLimitBadge(authenticated bool, rate github.RateInfo) string {
 	if rate.Known && rate.Limit > 0 {
 		frac := float64(rate.Remaining) / float64(rate.Limit)
