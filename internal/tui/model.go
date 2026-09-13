@@ -26,10 +26,20 @@ const viewCount = 4
 const fetchTimeout = 60 * time.Second
 
 type resultMsg struct {
+	gen    int
 	report score.Report
 	raw    score.RawMetrics
 	err    error
 }
+
+type progressMsg struct {
+	gen int
+	p   metrics.Progress
+}
+
+// progressBuffer bounds the per-fetch event channel; a full fetch emits
+// roughly two events per stage plus retries.
+const progressBuffer = 64
 
 // Model is the Bubble Tea model for the worthy TUI.
 type Model struct {
@@ -50,6 +60,12 @@ type Model struct {
 	height      int
 	loadStart   time.Time
 	spinner     spinner.Model
+
+	fetchGen    int
+	fetchCancel context.CancelFunc
+	progress    chan tea.Msg
+	stages      []stageStatus
+	hasRepo     bool
 
 	report score.Report
 	raw    score.RawMetrics
@@ -88,6 +104,7 @@ func New(ctx context.Context, client *github.Client, owner, repo string, opts ..
 	for _, o := range opts {
 		o(&m)
 	}
+	m.prepareFetch()
 	return m
 }
 
@@ -96,17 +113,68 @@ func (m Model) Init() tea.Cmd {
 	return tea.Batch(m.spinner.Tick, m.fetchCmd())
 }
 
+// prepareFetch cancels any in-flight fetch and sets up the state for a new
+// one; fetchCmd then starts it. Split so Init (value receiver) can start the
+// fetch New prepared.
+func (m *Model) prepareFetch() {
+	if m.fetchCancel != nil {
+		m.fetchCancel()
+	}
+	m.fetchGen++
+	m.state = stateLoading
+	m.err = nil
+	m.hasRepo = false
+	m.loadStart = time.Now()
+	m.stages = newStages()
+	m.progress = make(chan tea.Msg, progressBuffer)
+	_, m.fetchCancel = context.WithCancel(m.ctx)
+}
+
+// fetchCmd runs the collection and, in parallel, the first progress wait.
 func (m Model) fetchCmd() tea.Cmd {
+	return tea.Batch(m.collectCmd(), waitProgress(m.progress))
+}
+
+// collectCmd runs metrics.Collect off the event loop, streaming progress into
+// m.progress and returning the final resultMsg.
+func (m Model) collectCmd() tea.Cmd {
 	ctx, cancel := context.WithTimeout(m.ctx, fetchTimeout)
 	client := m.client
 	owner, repo, now := m.owner, m.repo, m.now
+	gen, ch := m.fetchGen, m.progress
+	parentCancel := m.fetchCancel
 	return func() tea.Msg {
 		defer cancel()
-		raw, err := metrics.Collect(ctx, client, owner, repo, now)
-		if err != nil {
-			return resultMsg{err: err}
+		go func() {
+			// Tie this fetch's timeout to the per-fetch cancel so pressing r
+			// aborts the previous collection.
+			<-ctx.Done()
+			parentCancel()
+		}()
+		emit := func(p metrics.Progress) {
+			select {
+			case ch <- progressMsg{gen: gen, p: p}:
+			case <-ctx.Done():
+			}
 		}
-		return resultMsg{report: score.Evaluate(raw), raw: raw}
+		raw, err := metrics.Collect(ctx, client, owner, repo, now, metrics.WithProgress(emit))
+		close(ch)
+		if err != nil {
+			return resultMsg{gen: gen, err: err}
+		}
+		return resultMsg{gen: gen, report: score.Evaluate(raw), raw: raw}
+	}
+}
+
+// waitProgress delivers the next progress event; it returns nil once the
+// channel is closed at the end of a fetch.
+func waitProgress(ch <-chan tea.Msg) tea.Cmd {
+	return func() tea.Msg {
+		msg, ok := <-ch
+		if !ok {
+			return nil
+		}
+		return msg
 	}
 }
 
@@ -119,7 +187,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.height = msg.Height
 		return m, nil
 
+	case progressMsg:
+		if msg.gen != m.fetchGen {
+			return m, nil
+		}
+		m.applyProgress(msg.p)
+		return m, waitProgress(m.progress)
+
 	case resultMsg:
+		if msg.gen != m.fetchGen {
+			return m, nil
+		}
 		if msg.err != nil {
 			m.state = stateErrored
 			m.err = msg.err
@@ -189,9 +267,7 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.resetSelection()
 		return m, nil
 	case "r":
-		m.state = stateLoading
-		m.err = nil
-		m.loadStart = time.Now()
+		m.prepareFetch()
 		return m, tea.Batch(m.spinner.Tick, m.fetchCmd())
 	case "j", "down":
 		if m.canSelect() {

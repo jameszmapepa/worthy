@@ -123,6 +123,9 @@ func (c *Client) getWithHeader(ctx context.Context, path string, out any) (http.
 			if attempt >= c.maxRetries {
 				return nil, fmt.Errorf("github still computing stats for %s after %d retries", path, attempt)
 			}
+			if observe := retryObserverFrom(ctx); observe != nil {
+				observe(path, attempt+1)
+			}
 			if err := sleep(ctx, c.retryWait); err != nil {
 				return nil, err
 			}

@@ -40,7 +40,7 @@ func TestRenderDispatchesAllViews(t *testing.T) {
 
 func TestFetchCmdErrorPath(t *testing.T) {
 	m := New(context.Background(), github.NewClient(), "o", "r")
-	updated, _ := m.Update(resultMsg{err: errors.New("collect failed")})
+	updated, _ := m.Update(resultMsg{gen: m.fetchGen, err: errors.New("collect failed")})
 	if updated.(Model).state != stateErrored {
 		t.Error("error resultMsg should move to errored state")
 	}
@@ -50,7 +50,7 @@ func TestFetchCmdReturnsResultMsgFromCancelledContext(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	m := New(ctx, github.NewClient(), "torvalds", "linux")
-	msg := m.fetchCmd()()
+	msg := m.collectCmd()()
 	if _, ok := msg.(resultMsg); !ok {
 		t.Errorf("fetchCmd produced %T, want resultMsg", msg)
 	}

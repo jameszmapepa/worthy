@@ -2,9 +2,7 @@ package tui
 
 import (
 	"errors"
-	"fmt"
 	"strings"
-	"time"
 
 	"github.com/jameszmapepa/worthy/internal/github"
 )
@@ -18,7 +16,7 @@ func (m Model) render() string {
 	}
 	header := renderHeaderPanel(
 		m.owner, m.repo, m.raw,
-		m.state == stateLoaded, m.client.Authenticated(), m.width, grade, m.asciiIcons,
+		m.state == stateLoaded || m.hasRepo, m.client.Authenticated(), m.width, grade, m.asciiIcons,
 	)
 
 	var body string
@@ -47,11 +45,6 @@ func (m Model) truncateBody(header, body string) string {
 	}
 	trimmed := lines[:available-1]
 	return strings.Join(trimmed, "\n") + "\n" + mutedStyle.Render("↓ content truncated")
-}
-
-func (m Model) renderLoading() string {
-	elapsed := time.Since(m.loadStart).Round(time.Second)
-	return fmt.Sprintf("%s Fetching %s/%s … (%s)", m.spinner.View(), m.owner, m.repo, elapsed)
 }
 
 func (m Model) renderError() string {

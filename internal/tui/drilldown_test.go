@@ -11,7 +11,7 @@ import (
 func loadedModel(t *testing.T) Model {
 	t.Helper()
 	m := newTestModel()
-	updated, _ := m.Update(resultMsg{report: fixedReport(), raw: fixedRaw()})
+	updated, _ := m.Update(resultMsg{gen: m.fetchGen, report: fixedReport(), raw: fixedRaw()})
 	return updated.(Model)
 }
 
@@ -207,7 +207,7 @@ func TestDrillRenderShowsDetailWhenExpanded(t *testing.T) {
 func TestDrillInertWhileErrored(t *testing.T) {
 	m := newTestModel()
 
-	next, _ := m.Update(resultMsg{err: fmt.Errorf("network failure")})
+	next, _ := m.Update(resultMsg{gen: m.fetchGen, err: fmt.Errorf("network failure")})
 	m = next.(Model)
 
 	m = press(m, "j")

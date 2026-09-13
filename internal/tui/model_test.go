@@ -28,7 +28,7 @@ func TestInitialStateIsLoading(t *testing.T) {
 
 func TestResultMsgMovesToLoaded(t *testing.T) {
 	m := newTestModel()
-	updated, _ := m.Update(resultMsg{report: fixedReport(), raw: fixedRaw()})
+	updated, _ := m.Update(resultMsg{gen: m.fetchGen, report: fixedReport(), raw: fixedRaw()})
 	got := updated.(Model)
 	if got.state != stateLoaded {
 		t.Errorf("state after success = %v, want loaded", got.state)
@@ -40,7 +40,7 @@ func TestResultMsgMovesToLoaded(t *testing.T) {
 
 func TestResultMsgErrorMovesToErrored(t *testing.T) {
 	m := newTestModel()
-	updated, _ := m.Update(resultMsg{err: errors.New("boom")})
+	updated, _ := m.Update(resultMsg{gen: m.fetchGen, err: errors.New("boom")})
 	got := updated.(Model)
 	if got.state != stateErrored {
 		t.Errorf("state after error = %v, want errored", got.state)

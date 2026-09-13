@@ -18,14 +18,22 @@ import (
 const maxConcurrency = 8
 
 // Collect gathers repository health signals with now injected for deterministic testing; non-context errors degrade to RawMetrics.Partial.
-func Collect(ctx context.Context, c *github.Client, owner, repo string, now time.Time) (score.RawMetrics, error) {
+func Collect(ctx context.Context, c *github.Client, owner, repo string, now time.Time, opts ...Option) (score.RawMetrics, error) {
+	var o options
+	for _, opt := range opts {
+		opt(&o)
+	}
 	var raw score.RawMetrics
 
+	o.emit(Progress{Stage: StageRepository, State: StageRunning})
 	repoData, err := c.Repository(ctx, owner, repo)
 	if err != nil {
+		o.emit(Progress{Stage: StageRepository, State: StageFailed})
 		return score.RawMetrics{}, err
 	}
 	applyRepo(&raw, repoData, now)
+	header := raw
+	o.emit(Progress{Stage: StageRepository, State: StageDone, Repo: &header})
 
 	g, gctx := errgroup.WithContext(ctx)
 	sem := semaphore.NewWeighted(maxConcurrency)
@@ -43,16 +51,57 @@ func Collect(ctx context.Context, c *github.Client, owner, repo string, now time
 		labels   newcomerLabelResult
 	)
 
-	g.Go(func() error { return collectCommunity(gctx, c, owner, repo, sem, &comm) })
-	g.Go(func() error { return collectContributors(gctx, c, owner, repo, sem, &contrib) })
-	g.Go(func() error { return collectCommits(gctx, c, owner, repo, sem, now, &commits) })
-	g.Go(func() error { return collectReleases(gctx, c, owner, repo, sem, now, &rels) })
-	g.Go(func() error { return collectWorkflows(gctx, c, owner, repo, sem, &flows) })
-	g.Go(func() error { return collectClosedPulls(gctx, c, owner, repo, sem, now, &closedPR) })
-	g.Go(func() error { return collectOpenPulls(gctx, c, owner, repo, sem, now, &openPR) })
-	g.Go(func() error { return collectTTFR(gctx, c, owner, repo, sem, now, &ttfr) })
-	g.Go(func() error { return collectPRCohort(gctx, c, owner, repo, sem, now, &prCohort) })
-	g.Go(func() error { return collectNewcomerLabels(gctx, c, owner, repo, sem, &labels) })
+	// stage wraps a worker so its lifecycle (and any 202 retries inside it) is
+	// reported through the progress callback.
+	stage := func(name string, partial *string, fn func(context.Context) error) func() error {
+		return func() error {
+			o.emit(Progress{Stage: name, State: StageRunning})
+			sctx := github.WithRetryObserver(gctx, func(_ string, attempt int) {
+				o.emit(Progress{Stage: name, State: StageRetrying, Attempt: attempt})
+			})
+			err := fn(sctx)
+			switch {
+			case err != nil:
+				o.emit(Progress{Stage: name, State: StageFailed})
+			case *partial != "":
+				o.emit(Progress{Stage: name, State: StageDegraded})
+			default:
+				o.emit(Progress{Stage: name, State: StageDone})
+			}
+			return err
+		}
+	}
+
+	g.Go(stage(StageCommunity, &comm.partial, func(ctx context.Context) error {
+		return collectCommunity(ctx, c, owner, repo, sem, &comm)
+	}))
+	g.Go(stage(StageContributors, &contrib.partial, func(ctx context.Context) error {
+		return collectContributors(ctx, c, owner, repo, sem, &contrib)
+	}))
+	g.Go(stage(StageCommits, &commits.partial, func(ctx context.Context) error {
+		return collectCommits(ctx, c, owner, repo, sem, now, &commits)
+	}))
+	g.Go(stage(StageReleases, &rels.partial, func(ctx context.Context) error {
+		return collectReleases(ctx, c, owner, repo, sem, now, &rels)
+	}))
+	g.Go(stage(StageWorkflows, &flows.partial, func(ctx context.Context) error {
+		return collectWorkflows(ctx, c, owner, repo, sem, &flows)
+	}))
+	g.Go(stage(StageClosedPulls, &closedPR.partial, func(ctx context.Context) error {
+		return collectClosedPulls(ctx, c, owner, repo, sem, now, &closedPR)
+	}))
+	g.Go(stage(StageOpenPulls, &openPR.partial, func(ctx context.Context) error {
+		return collectOpenPulls(ctx, c, owner, repo, sem, now, &openPR)
+	}))
+	g.Go(stage(StageIssueTTFR, &ttfr.partial, func(ctx context.Context) error {
+		return collectTTFR(ctx, c, owner, repo, sem, now, &ttfr)
+	}))
+	g.Go(stage(StagePRCohort, &prCohort.partial, func(ctx context.Context) error {
+		return collectPRCohort(ctx, c, owner, repo, sem, now, &prCohort)
+	}))
+	g.Go(stage(StageNewcomerLabels, &labels.partial, func(ctx context.Context) error {
+		return collectNewcomerLabels(ctx, c, owner, repo, sem, &labels)
+	}))
 
 	if err := g.Wait(); err != nil {
 		return raw, err

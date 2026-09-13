@@ -264,7 +264,7 @@ func TestC9FetchCmdBoundsTimeout(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	m := New(ctx, github.NewClient(), "o", "r")
-	msg := m.fetchCmd()()
+	msg := m.collectCmd()()
 	if _, ok := msg.(resultMsg); !ok {
 		t.Errorf("fetchCmd produced %T, want resultMsg", msg)
 	}

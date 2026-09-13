@@ -92,7 +92,7 @@ func TestFooterHintShowsDrillOnSelectableViews(t *testing.T) {
 
 func TestEmptyReportSelectionInert(t *testing.T) {
 	m := newTestModel()
-	upd, _ := m.Update(resultMsg{report: score.Report{}, raw: score.RawMetrics{}})
+	upd, _ := m.Update(resultMsg{gen: m.fetchGen, report: score.Report{}, raw: score.RawMetrics{}})
 	m = upd.(Model)
 	for _, v := range []int{0, 1, 2} {
 		m.view = v
