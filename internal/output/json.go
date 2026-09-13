@@ -65,16 +65,23 @@ type Gate struct {
 	CapsTo     *float64 `json:"caps_score_to,omitempty"`
 }
 
+// Language is one language's share of the code.
+type Language struct {
+	Name    string  `json:"name"`
+	Percent float64 `json:"percent"`
+}
+
 // RepoMeta is the header metadata.
 type RepoMeta struct {
-	Description string `json:"description"`
-	Language    string `json:"language"`
-	License     string `json:"license"`
-	Stars       int    `json:"stars"`
-	Forks       int    `json:"forks"`
-	Watchers    int    `json:"watchers"`
-	AgeDays     int    `json:"age_days"`
-	Archived    bool   `json:"archived"`
+	Description string     `json:"description"`
+	Language    string     `json:"language"`
+	Languages   []Language `json:"languages"`
+	License     string     `json:"license"`
+	Stars       int        `json:"stars"`
+	Forks       int        `json:"forks"`
+	Watchers    int        `json:"watchers"`
+	AgeDays     int        `json:"age_days"`
+	Archived    bool       `json:"archived"`
 }
 
 // Build converts a report into the JSON document.
@@ -92,7 +99,7 @@ func Build(owner, repo string, r score.Report, raw score.RawMetrics) Document {
 		Gates:      make([]Gate, 0, len(r.Gates)),
 		Partial:    append([]string{}, raw.Partial...),
 		Repo: RepoMeta{
-			Description: raw.Description, Language: raw.Language, License: raw.LicenseSPDX,
+			Description: raw.Description, Language: raw.Language, Languages: languages(raw.Languages), License: raw.LicenseSPDX,
 			Stars: raw.Stars, Forks: raw.Forks, Watchers: raw.Watchers, AgeDays: raw.RepoAgeDays, Archived: raw.Archived,
 		},
 	}
@@ -120,4 +127,12 @@ func JSON(w io.Writer, owner, repo string, r score.Report, raw score.RawMetrics)
 	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")
 	return enc.Encode(Build(owner, repo, r, raw))
+}
+
+func languages(shares []score.LanguageShare) []Language {
+	out := make([]Language, 0, len(shares))
+	for _, sh := range shares {
+		out = append(out, Language{Name: sh.Name, Percent: sh.Percent})
+	}
+	return out
 }

@@ -14,7 +14,7 @@ import (
 func TestLoadingViewListsStages(t *testing.T) {
 	m := newTestModel()
 	out := m.render()
-	for _, want := range []string{"Scoring charmbracelet/bubbletea", "Repository", "Commit activity", "0/11"} {
+	for _, want := range []string{"Scoring charmbracelet/bubbletea", "Repository", "Commit activity", "0/12"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("loading view missing %q in:\n%s", want, out)
 		}
@@ -38,7 +38,7 @@ func TestProgressUpdatesStageAndHeader(t *testing.T) {
 	if !strings.Contains(out, "4.2k") || !strings.Contains(out, "A powerful little TUI framework") {
 		t.Errorf("header should show stars and description while loading:\n%s", out)
 	}
-	if !strings.Contains(out, "1/11") {
+	if !strings.Contains(out, "1/12") {
 		t.Errorf("loading view should count the finished stage:\n%s", out)
 	}
 

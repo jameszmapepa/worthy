@@ -28,6 +28,7 @@ var stageLabels = map[string]string{
 	metrics.StageIssueTTFR:      "Issue response time",
 	metrics.StagePRCohort:       "Recent PR cohort",
 	metrics.StageNewcomerLabels: "Newcomer labels",
+	metrics.StageLanguages:      "Languages",
 }
 
 func newStages() []stageStatus {

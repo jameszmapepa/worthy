@@ -28,13 +28,14 @@ const (
 	StageIssueTTFR      = "issue_ttfr"
 	StagePRCohort       = "pr_cohort"
 	StageNewcomerLabels = "newcomer_labels"
+	StageLanguages      = "languages"
 )
 
 // Stages lists every stage Collect reports, in start order.
 var Stages = []string{
 	StageRepository, StageCommunity, StageContributors, StageCommits, StageReleases,
 	StageWorkflows, StageClosedPulls, StageOpenPulls, StageIssueTTFR, StagePRCohort,
-	StageNewcomerLabels,
+	StageNewcomerLabels, StageLanguages,
 }
 
 // Progress is one collection event.

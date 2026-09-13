@@ -25,6 +25,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Window title names the repository and grade; the terminal's native
   progress indicator follows the fetch.
 - Header badge shows the live remaining API budget.
+- Header shows a language bar and legend (top six plus Other) from GitHub's
+  languages endpoint, and the primary language as a filled colour badge.
+  `--json` gains `repo.languages`.
 - Dependabot patch and minor updates queue themselves for auto-merge once the
   required checks pass; majors still wait for a human.
 

@@ -5,9 +5,11 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/charmbracelet/x/ansi"
 	"golang.org/x/sync/semaphore"
 
 	"github.com/jameszmapepa/worthy/internal/github"
+	"github.com/jameszmapepa/worthy/internal/score"
 )
 
 type communityResult struct {
@@ -210,6 +212,33 @@ func collectNewcomerLabels(gctx context.Context, c *github.Client, owner, repo s
 	out.open = open
 	out.available = available
 	out.ok = true
+	return nil
+}
+
+type languageResult struct {
+	shares  []score.LanguageShare
+	partial string
+}
+
+func collectLanguages(gctx context.Context, c *github.Client, owner, repo string, sem *semaphore.Weighted, out *languageResult) error {
+	var bytesBy map[string]int
+	err := withCall(gctx, sem, func() error {
+		b, e := c.Languages(gctx, owner, repo)
+		bytesBy = b
+		return e
+	})
+	if err != nil {
+		if isContextError(err) {
+			return err
+		}
+		out.partial = "languages"
+		return nil
+	}
+	clean := make(map[string]int, len(bytesBy))
+	for name, b := range bytesBy {
+		clean[ansi.Strip(name)] += b
+	}
+	out.shares = score.LanguageShares(clean)
 	return nil
 }
 

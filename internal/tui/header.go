@@ -37,6 +37,9 @@ func renderHeaderPanel(owner, repo string, raw score.RawMetrics, loaded, authent
 			rows = append(rows, mutedStyle.Render(truncate(desc, textW)))
 		}
 		rows = append(rows, metaRow(raw, ascii))
+		if len(raw.Languages) > 0 {
+			rows = append(rows, "", languageBar(raw.Languages, textW), languageLegend(raw.Languages, textW))
+		}
 	}
 
 	body := strings.Join(rows, "\n")

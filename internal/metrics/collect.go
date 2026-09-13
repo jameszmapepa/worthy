@@ -49,6 +49,7 @@ func Collect(ctx context.Context, c *github.Client, owner, repo string, now time
 		ttfr     ttfrResult
 		prCohort prCohortResult
 		labels   newcomerLabelResult
+		langs    languageResult
 	)
 
 	stage := func(name string, partial *string, fn func(context.Context) error) func() error {
@@ -100,12 +101,16 @@ func Collect(ctx context.Context, c *github.Client, owner, repo string, now time
 	g.Go(stage(StageNewcomerLabels, &labels.partial, func(ctx context.Context) error {
 		return collectNewcomerLabels(ctx, c, owner, repo, sem, &labels)
 	}))
+	g.Go(stage(StageLanguages, &langs.partial, func(ctx context.Context) error {
+		return collectLanguages(ctx, c, owner, repo, sem, &langs)
+	}))
 
 	if err := g.Wait(); err != nil {
 		return raw, err
 	}
 
 	assemble(&raw, &comm, &contrib, &commits, &rels, &flows, &closedPR, &openPR, &ttfr, &prCohort, &labels)
+	raw.Languages = langs.shares
 	return raw, nil
 }
 

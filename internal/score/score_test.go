@@ -421,3 +421,13 @@ func repeat(vals ...int) []int {
 	copy(out, vals)
 	return out
 }
+
+func TestLanguageSharesOrderAndPercent(t *testing.T) {
+	got := LanguageShares(map[string]int{"Go": 750, "Shell": 250})
+	if len(got) != 2 || got[0].Name != "Go" || got[0].Percent != 75 || got[1].Percent != 25 {
+		t.Errorf("shares = %+v", got)
+	}
+	if LanguageShares(nil) != nil {
+		t.Error("empty input should yield nil")
+	}
+}

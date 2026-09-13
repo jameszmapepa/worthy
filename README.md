@@ -52,7 +52,8 @@ worthy --plain owner/repo    # static scorecard, no interactive UI
 worthy owner/repo | less     # piped output is plain automatically
 ```
 
-The header shows the primary language as a Nerd Font devicon; pass `--ascii`
+The header shows the primary language as a filled badge with its Nerd Font
+devicon, plus a language bar and legend once the score loads; pass `--ascii`
 (or set `WORTHY_ASCII=1`) if your terminal lacks a Nerd Font. The palette
 follows your terminal background, so it reads on light and dark themes.
 

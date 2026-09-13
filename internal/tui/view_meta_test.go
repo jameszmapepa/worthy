@@ -29,8 +29,8 @@ func TestProgressBarTracksStages(t *testing.T) {
 	for _, st := range metrics.Stages[:5] {
 		m.applyProgress(metrics.Progress{Stage: st, State: metrics.StageDone})
 	}
-	if pb = m.View().ProgressBar; pb.Value != 45 {
-		t.Errorf("5/11 stages should be 45%%, got %d", pb.Value)
+	if pb = m.View().ProgressBar; pb.Value != 41 {
+		t.Errorf("5/12 stages should be 41%%, got %d", pb.Value)
 	}
 	if loaded := loadedModel(t); loaded.View().ProgressBar != nil {
 		t.Error("loaded state must clear the progress bar")
