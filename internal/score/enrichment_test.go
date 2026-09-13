@@ -139,7 +139,7 @@ func TestGateHowToClearContent(t *testing.T) {
 				return r
 			},
 			gateKey: "stale_or_archived",
-			want:    "Archived in place; informational only.",
+			want:    "Unarchive the repository to accept changes again.",
 		},
 		{
 			name: "stale_mature",
@@ -154,7 +154,7 @@ func TestGateHowToClearContent(t *testing.T) {
 				return r
 			},
 			gateKey: "stale_or_archived",
-			want:    "Informational: established project, low recent activity.",
+			want:    "A small release or a pinned status issue tells contributors the project is alive.",
 		},
 		{
 			name: "integrity_risk",
@@ -177,7 +177,7 @@ func TestGateHowToClearContent(t *testing.T) {
 				return r
 			},
 			gateKey: "vanity_stars",
-			want:    "Informational: stars are high relative to watchers.",
+			want:    "Grow the watcher and contributor base so engagement matches the star count.",
 		},
 	}
 

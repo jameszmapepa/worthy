@@ -13,28 +13,12 @@ type QuestionScore struct {
 	CategoryKeys []string
 }
 
-var maintainedMessages = map[string]string{
-	"A": "Actively maintained",
-	"B": "Maintained",
-	"C": "Steady but slowing",
-	"D": "Limited recent activity",
-	"F": "Largely inactive",
-}
-
-var contributableMessages = map[string]string{
-	"A": "Welcoming to newcomers",
-	"B": "Open to contributions",
-	"C": "Mixed for newcomers",
-	"D": "Selective on outside PRs",
-	"F": "Rarely merges outside PRs",
-}
-
-func questionMessage(key, grade string) string {
+func questionMessage(key, grade string, raw RawMetrics) string {
 	switch key {
 	case "maintained":
-		return maintainedMessages[grade]
+		return maintainedMessage(grade, raw)
 	case "newcomer":
-		return contributableMessages[grade]
+		return contributableMessage(grade, raw)
 	}
 	return ""
 }
@@ -77,7 +61,7 @@ func contributableGateCap(gates []Gate) float64 {
 	return cap
 }
 
-func computeQuestionScores(cats []CategoryScore, gates []Gate) (maintained, contributable QuestionScore) {
+func computeQuestionScores(cats []CategoryScore, gates []Gate, raw RawMetrics) (maintained, contributable QuestionScore) {
 	byKey := make(map[string]CategoryScore, len(cats))
 	for _, c := range cats {
 		byKey[c.Key] = c
@@ -118,7 +102,7 @@ func computeQuestionScores(cats []CategoryScore, gates []Gate) (maintained, cont
 			RawValue:     rawValue,
 			Value:        value,
 			Grade:        grade,
-			Message:      questionMessage(def.key, grade),
+			Message:      questionMessage(def.key, grade, raw),
 			CategoryKeys: keys,
 		}
 		switch def.key {
@@ -133,6 +117,10 @@ func computeQuestionScores(cats []CategoryScore, gates []Gate) (maintained, cont
 
 // QuestionVerdicts returns the two per-question verdicts in display order.
 func QuestionVerdicts(r Report) []QuestionScore {
-	maintained, contributable := computeQuestionScores(r.Categories, r.Gates)
-	return []QuestionScore{maintained, contributable}
+	if r.Maintained.Key == "" && r.Contributable.Key == "" {
+		maintained, contributable := computeQuestionScores(r.Categories, r.Gates, RawMetrics{})
+		maintained.Message, contributable.Message = "", ""
+		return []QuestionScore{maintained, contributable}
+	}
+	return []QuestionScore{r.Maintained, r.Contributable}
 }

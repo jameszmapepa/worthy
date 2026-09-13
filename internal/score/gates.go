@@ -1,6 +1,9 @@
 package score
 
-import "math"
+import (
+	"fmt"
+	"math"
+)
 
 // Severity constants classify how serious a triggered gate's condition is.
 const (
@@ -60,10 +63,11 @@ const busFactorGateThreshold = 4
 func busFactorGate(raw RawMetrics) (Gate, bool) {
 	if raw.TopContributorRecentShare > 0.80 && raw.ContributorCount <= busFactorGateThreshold {
 		return Gate{
-			Key:        "bus_factor",
-			Severity:   SeverityWarn,
-			Title:      "Bus factor risk",
-			Detail:     "One contributor authors most recent commits with few others involved.",
+			Key:      "bus_factor",
+			Severity: SeverityWarn,
+			Title:    "Bus factor risk",
+			Detail: fmt.Sprintf("One person writes %.1f%% of recent commits and only %s. If they step away, your merged work may go unmaintained.",
+				raw.TopContributorRecentShare*100, plural(raw.ContributorCount, "person contributes", "people contribute")),
 			HowToClear: "Distribute commits beyond the top author and grow the contributor base.",
 			CapTo:      ptr(capBusFactor),
 		}, true
@@ -75,10 +79,11 @@ func closedToStrangersGate(raw RawMetrics, subs subLookup) (Gate, bool) {
 	newcomerSample := raw.NewcomerPRsMerged + raw.NewcomerPRsClosedUnmerged
 	if subs.prAcceptance >= 70 && subs.newcomerMergeRate <= 15 && newcomerSample > 0 {
 		return Gate{
-			Key:        "closed_to_strangers",
-			Severity:   SeverityWarn,
-			Title:      "Closed to newcomers",
-			Detail:     "PRs are accepted overall but newcomers' PRs are rarely merged.",
+			Key:      "closed_to_strangers",
+			Severity: SeverityWarn,
+			Title:    "Closed to newcomers",
+			Detail: fmt.Sprintf("Insiders' PRs merge, strangers' don't (%d of %d newcomer PRs). Get a maintainer's agreement in an issue before writing code.",
+				raw.NewcomerPRsMerged, newcomerSample),
 			HowToClear: "Merge PRs from first-time and non-member contributors.",
 			CapTo:      ptr(capStrangers),
 		}, true
@@ -98,8 +103,8 @@ func staleOrArchivedGate(raw RawMetrics, subs subLookup) (Gate, bool) {
 			Key:        "stale_or_archived",
 			Severity:   SeverityCritical,
 			Title:      "Archived or disabled",
-			Detail:     "The repository is archived or disabled and no longer accepts changes.",
-			HowToClear: "Archived in place; informational only.",
+			Detail:     "Archived: nothing you send can be merged.",
+			HowToClear: "Unarchive the repository to accept changes again.",
 			CapTo:      ptr(capArchived),
 		}, true
 	}
@@ -110,17 +115,18 @@ func staleOrArchivedGate(raw RawMetrics, subs subLookup) (Gate, bool) {
 			Key:        "stale_or_archived",
 			Severity:   SeverityInfo,
 			Title:      "Mature/stable, low cadence",
-			Detail:     "An established project with few recent pushes; likely stable rather than abandoned.",
-			HowToClear: "Informational: established project, low recent activity.",
+			Detail:     "Stable and quiet, not abandoned: expect slow but real reviews.",
+			HowToClear: "A small release or a pinned status issue tells contributors the project is alive.",
 			CapTo:      nil,
 		}, true
 	}
 
 	return Gate{
-		Key:        "stale_or_archived",
-		Severity:   SeverityWarn,
-		Title:      "Stale",
-		Detail:     "No pushes in over a year; the project may be unmaintained.",
+		Key:      "stale_or_archived",
+		Severity: SeverityWarn,
+		Title:    "Stale",
+		Detail: fmt.Sprintf("No commits in %s. Treat as unmaintained unless a maintainer replies to an issue.",
+			spanDays(raw.DaysSinceLastPush)),
 		HowToClear: "Resume commits or cut a release.",
 		CapTo:      ptr(capStale),
 	}, true
@@ -132,7 +138,7 @@ func integrityRiskGate(raw RawMetrics, rawComposite float64) (Gate, bool) {
 			Key:        "integrity_risk",
 			Severity:   SeverityWarn,
 			Title:      "Supply-chain integrity risk",
-			Detail:     "Uses pull_request_target and ships unsigned release assets.",
+			Detail:     "Risky CI trigger plus unsigned releases: your PR could run with repo secrets, and releases can't be verified.",
 			HowToClear: "Sign release assets and drop pull_request_target workflows.",
 			CapTo:      ptr(capIntegrity),
 		}, true
@@ -143,11 +149,12 @@ func integrityRiskGate(raw RawMetrics, rawComposite float64) (Gate, bool) {
 func vanityStarsGate(raw RawMetrics) (Gate, bool) {
 	if raw.Stars > 5000 && raw.Watchers*200 < raw.Stars {
 		return Gate{
-			Key:        "vanity_stars",
-			Severity:   SeverityInfo,
-			Title:      "Stars outpace engagement",
-			Detail:     "High star count relative to watchers; popularity may exceed active use.",
-			HowToClear: "Informational: stars are high relative to watchers.",
+			Key:      "vanity_stars",
+			Severity: SeverityInfo,
+			Title:    "Stars outpace engagement",
+			Detail: fmt.Sprintf("Popular on paper (%s stars, %s watchers). Don't read stars as an active community.",
+				humanCount(raw.Stars), humanCount(raw.Watchers)),
+			HowToClear: "Grow the watcher and contributor base so engagement matches the star count.",
 			CapTo:      nil,
 		}, true
 	}
@@ -165,3 +172,14 @@ func applyCaps(composite float64, gates []Gate) float64 {
 }
 
 func ptr(v float64) *float64 { return &v }
+
+func humanCount(n int) string {
+	switch {
+	case n >= 1_000_000:
+		return fmt.Sprintf("%.1fM", float64(n)/1_000_000)
+	case n >= 1_000:
+		return fmt.Sprintf("%.1fk", float64(n)/1_000)
+	default:
+		return fmt.Sprintf("%d", n)
+	}
+}

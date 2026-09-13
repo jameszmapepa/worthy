@@ -113,6 +113,14 @@ worthy answers two questions, then blends them into one overall grade:
 - **Will it last?** — its momentum: commit frequency and recency, release
   cadence, issue close-ratio, and PR backlog.
 
+Each question comes with a one-sentence answer built from the actual
+readings, for example "Likely: 4 of 5 newcomer PRs merged, first reply in
+about 27h, contributing guide present." The headline verdict turns the two
+grades into a recommendation ("Worth your time", "Coin flip", "Look
+elsewhere unless you have a specific reason") followed by the evidence.
+Gates explain what the finding means for your pull request, with the
+numbers that triggered them.
+
 A **confidence** level flags repos with too little history to judge fairly.
 
 **Composite = 47.5% Activity + 45% Community + 7.5% Security.**

@@ -99,7 +99,7 @@ func TestVerdictAppearsInScorecardHero(t *testing.T) {
 	r := realReport()
 	out := renderScorecard(r, 100, -1, false)
 
-	if r.Verdict == "" || !strings.Contains(out, "grade") {
+	if r.Verdict == "" || !strings.Contains(out, r.Verdict[:20]) {
 		t.Errorf("scorecard hero should contain the verdict:\n%s", out)
 	}
 }

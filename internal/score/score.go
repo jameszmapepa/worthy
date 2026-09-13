@@ -103,7 +103,7 @@ func Evaluate(raw RawMetrics) Report {
 	grade := LetterGrade(adjusted)
 	cats := []CategoryScore{activity, community, security}
 
-	maintained, contributable := computeQuestionScores(cats, gates)
+	maintained, contributable := computeQuestionScores(cats, gates, raw)
 
 	return Report{
 		Categories:        cats,
@@ -111,7 +111,7 @@ func Evaluate(raw RawMetrics) Report {
 		AdjustedComposite: adjusted,
 		Grade:             grade,
 		Gates:             gates,
-		Verdict:           buildVerdict(cats, grade, gates),
+		Verdict:           buildVerdict(maintained, contributable, gates, cats, raw),
 		Maintained:        maintained,
 		Contributable:     contributable,
 		Confidence:        computeConfidence(raw),

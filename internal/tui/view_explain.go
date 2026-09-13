@@ -16,7 +16,7 @@ func renderExplain(r score.Report, width int) string {
 	if verdict == "" {
 		verdict = fmt.Sprintf("Grade %s", r.Grade)
 	}
-	b.WriteString(heroStyle.Render(truncate(verdict, clampWidth(width-8, 30, 120))))
+	b.WriteString(heroStyle.Render(labelStyle.Width(clampWidth(width-8, 30, 120)).Render(verdict)))
 	b.WriteString("\n\n")
 
 	strong, weak := score.Drivers(r)

@@ -70,7 +70,7 @@ func renderQuestionCard(qs score.QuestionScore, width int) string {
 
 	body := question + "\n" + headline
 	if qs.Message != "" {
-		body += "\n" + mutedStyle.Render(truncate(qs.Message, innerW))
+		body += "\n" + mutedStyle.Width(innerW).Render(qs.Message)
 	}
 
 	return questionCardStyle.Width(width - 2).Render(body)
@@ -95,7 +95,7 @@ func renderHero(r score.Report, width int) string {
 
 	body := headline
 	if r.Verdict != "" {
-		body += "\n" + labelStyle.Render(truncate(r.Verdict, clampWidth(width-8, 30, 120)))
+		body += "\n" + labelStyle.Width(clampWidth(width-8, 30, 120)).Render(r.Verdict)
 	}
 	return heroStyle.Render(body)
 }

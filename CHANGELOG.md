@@ -28,6 +28,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Dependabot patch and minor updates queue themselves for auto-merge once the
   required checks pass; majors still wait for a human.
 
+### Changed
+
+- Question answers and the headline verdict are now decision sentences built
+  from the readings ("Likely: 4 of 5 newcomer PRs merged, first reply in
+  about 27h") instead of grade labels. Gate text is written for the
+  contributor and carries the triggering numbers. Quiet readings say "no
+  issues in 90d" rather than "0/0 issues closed".
+- GitHub 5xx responses are retried twice and reported without the HTML
+  error page.
+
 ### Fixed
 
 - Gauges view overflowed the terminal by two columns at every width.
